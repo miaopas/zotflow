@@ -13,8 +13,6 @@ const MAX_PUSH_RETRIES = 3;
 
 /** Bidirectional sync engine — pulls items/collections from Zotero and pushes local changes. */
 export class SyncService {
-    private syncing = false;
-
     constructor(
         private zotero: ZoteroAPIService,
         private settings: ZotFlowSettings,
@@ -38,12 +36,7 @@ export class SyncService {
         ) => void,
         libraryId?: number,
     ): Promise<{ successCount: number; failCount: number }> {
-        if (this.syncing) {
-            this.parentHost.log(
-                "warn",
-                "Sync requested but already running.",
-                "SyncService",
-            );
+        if (signal?.aborted) {
             return { successCount: 0, failCount: 0 };
         }
 
@@ -98,9 +91,6 @@ export class SyncService {
             return { successCount: 0, failCount: 0 };
         }
 
-        this.syncing = true;
-        this.parentHost.log("debug", "Starting sync", "SyncService");
-
         // Build the active library list for progress reporting
         const activeLibraries: number[] = [];
 
@@ -111,7 +101,6 @@ export class SyncService {
             if (lib && libConfig && libConfig.mode !== "ignored") {
                 activeLibraries.push(libraryId);
             } else {
-                this.syncing = false;
                 this.parentHost.log(
                     "warn",
                     `Library ${libraryId} is ignored or not found.`,
@@ -131,6 +120,8 @@ export class SyncService {
 
         let successCount = 0;
         let failCount = 0;
+
+        this.parentHost.log("debug", "Starting sync", "SyncService");
 
         try {
             const totalLibs = activeLibraries.length;
@@ -180,6 +171,13 @@ export class SyncService {
                             }
                         }
                     }
+
+                    // Stamp the library's last-sync timestamp on success so
+                    // the Activity Center reflects the most recent run.
+                    await db.libraries.update(libKey, {
+                        syncedAt: new Date().toISOString().split(".")[0] + "Z",
+                    });
+
                     successCount++;
                 } catch (error: unknown) {
                     failCount++;
@@ -220,7 +218,6 @@ export class SyncService {
             );
             throw error; // Re-throw so TaskLayer can track it as failed
         } finally {
-            this.syncing = false;
             this.parentHost.log("info", "Sync finished.", "SyncService");
         }
     }

@@ -21,6 +21,14 @@ export class TaskManager {
     private tasks: Map<string, BaseTask> = new Map();
     private activeControllers: Map<string, AbortController> = new Map();
     private activeExtractions = new Map<string, Promise<AnnotationJSON[]>>();
+    /**
+     * Tracks in-flight sync tasks so we can dedupe overlapping requests for
+     * the same library. Different libraries sync independently (separate
+     * library-scoped DB rows and API endpoints), so they can run in parallel.
+     *
+     * Key: `libraryId` (number) for per-library syncs, `"all"` for full syncs.
+     */
+    private activeSyncs = new Map<number | "all", string>();
 
     constructor(private parentHost: IParentProxy) {}
 
@@ -74,9 +82,32 @@ export class TaskManager {
     }
 
     public async createSyncTask(syncService: SyncService, libraryId?: number) {
+        const scope: number | "all" = libraryId ?? "all";
+        const existing = this.activeSyncs.get(scope);
+        if (existing) {
+            this.parentHost.log(
+                "info",
+                `Sync for ${scope === "all" ? "all libraries" : `library ${scope}`} already in progress; reusing task ${existing}.`,
+                "TaskManager",
+            );
+            return existing;
+        }
+
         const { SyncTask } = await import("./impl/sync-task");
         const task = new SyncTask(syncService, libraryId);
-        return this.startTask(task);
+        this.activeSyncs.set(scope, task.id);
+
+        this.registerTask(task);
+
+        const controller = new AbortController();
+        this.activeControllers.set(task.id, controller);
+
+        task.execute(controller.signal).finally(() => {
+            this.activeControllers.delete(task.id);
+            this.activeSyncs.delete(scope);
+        });
+
+        return task.id;
     }
 
     public async createBatchNoteTask(
