@@ -316,6 +316,22 @@ export class EmbeddableMarkdownEditor {
 
                         if (self.options.showLineNumbers) {
                             extensions.push(lineNumbers());
+                        } else {
+                            extensions.push(
+                                lineNumbers({ formatNumber: () => "" }),
+                            );
+                            extensions.push(
+                                EditorView.theme({
+                                    ".cm-gutters .cm-lineNumbers": {
+                                        display: "none !important",
+                                    },
+
+                                    ".cm-gutters:has(> .cm-gutter:only-child.cm-lineNumbers)":
+                                        {
+                                            display: "none !important",
+                                        },
+                                }),
+                            );
                         }
                     }
 
