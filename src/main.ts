@@ -6,6 +6,7 @@ import {
     Editor,
     MarkdownRenderer,
     MarkdownView,
+    Menu,
     Modal,
     Plugin,
     TFile,
@@ -33,6 +34,7 @@ import { handleEditorDrop } from "ui/editor/citation-helper";
 
 import { openAttachment } from "utils/viewer";
 import { getLocalSidecarPath } from "utils/utils";
+import { checkFile, readTextFile } from "utils/file";
 import { ActivityCenterModal } from "ui/activity-center/modal";
 import { ZoteroSearchModal } from "ui/modals/suggest";
 import { AttachmentSelectModal } from "ui/modals/attachment-suggest";
@@ -43,6 +45,7 @@ import type {
     ViewStateEntry,
 } from "./settings/types";
 import type { CustomReaderTheme } from "types/zotero-reader";
+import type { AnnotationJSON } from "types/zotero-reader";
 import type { AttachmentData } from "types/zotero-item";
 import type { IDBZoteroItem } from "types/db-schema";
 
@@ -209,6 +212,73 @@ export default class ZotFlow extends Plugin {
         });
 
         this.addCommand({
+            id: "open-activity-center",
+            name: "Open ZotFlow Activity Center",
+            callback: () => {
+                new ActivityCenterModal(this.app).open();
+            },
+        });
+
+        this.addCommand({
+            id: "sync-all-libraries",
+            name: "Sync all libraries",
+            callback: async () => {
+                await this.runTaskCommand(
+                    () => workerBridge.createSyncTask(),
+                    "Sync started",
+                    "Failed to start sync",
+                );
+            },
+        });
+
+        this.addCommand({
+            id: "update-all-library-source-notes",
+            name: "Update all library source notes (incremental)",
+            callback: async () => {
+                await this.runTaskCommand(
+                    () => workerBridge.createBatchNoteTask({}, {}, false),
+                    "Library source note update started",
+                    "Failed to start library source note update",
+                );
+            },
+        });
+
+        this.addCommand({
+            id: "force-update-all-library-source-notes",
+            name: "Update all library source notes (force update)",
+            callback: async () => {
+                await this.runTaskCommand(
+                    () =>
+                        workerBridge.createBatchNoteTask(
+                            {},
+                            {
+                                forceUpdateContent: true,
+                                forceUpdateImages: true,
+                            },
+                            true,
+                        ),
+                    "Library source note force-update started",
+                    "Failed to start library source note force-update",
+                );
+            },
+        });
+
+        this.addCommand({
+            id: "extract-all-annotation-images",
+            name: "Extract all annotation images from attachments",
+            callback: async () => {
+                await this.runTaskCommand(
+                    () =>
+                        workerBridge.createBatchExtractImagesTask({
+                            forceUpdate: false,
+                        }),
+                    "Annotation image extraction started",
+                    "Failed to start annotation image extraction",
+                );
+            },
+        });
+
+        this.addCommand({
             id: "search-zotero",
             name: "Search Zotero Library",
             callback: () => {
@@ -270,6 +340,11 @@ export default class ZotFlow extends Plugin {
                 services.viewStateService.deleteViewState(file.path);
                 this.handleSidecarDelete(file);
             }),
+        );
+
+        // Add right-click "Update source note" entries for source notes
+        this.registerEvent(
+            this.app.workspace.on("file-menu", this.handleFileMenu.bind(this)),
         );
     }
 
@@ -522,6 +597,200 @@ export default class ZotFlow extends Plugin {
      */
     private getSidecarPathFromFile(file: TFile): string {
         return getLocalSidecarPath(file.path, this.settings.localSidecarFolder);
+    }
+
+    /**
+     * Run a worker task-creating callback and surface a success/error notice.
+     * Used by command-palette commands that delegate to TaskManager.
+     */
+    private async runTaskCommand(
+        createTask: () => Promise<string>,
+        successMessage: string,
+        errorMessage: string,
+    ): Promise<void> {
+        try {
+            const taskId = await createTask();
+            services.notificationService.notify(
+                "info",
+                `${successMessage} (task ${taskId.slice(0, 8)})`,
+            );
+        } catch (e) {
+            services.notificationService.notify("error", errorMessage);
+            services.logService.error(errorMessage, "Main", e);
+        }
+    }
+
+    /**
+     * Right-click "Update source note" entries.
+     * - Library source note (zotero-key + library-id): incremental + force.
+     * - Local source note (zotflow-local-attachment): single update entry
+     *   (local notes are template-driven and always re-render fully).
+     */
+    private handleFileMenu(menu: Menu, file: TAbstractFile): void {
+        if (!(file instanceof TFile) || file.extension !== "md") return;
+
+        const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+        if (!fm) return;
+
+        const zoteroKey = fm["zotero-key"];
+        const libraryID = fm["library-id"];
+        const localAttachment = fm["zotflow-local-attachment"];
+
+        const isLibrarySourceNote =
+            typeof zoteroKey === "string" && typeof libraryID === "number";
+        const isLocalSourceNote = typeof localAttachment === "string";
+
+        if (!isLibrarySourceNote && !isLocalSourceNote) return;
+
+        if (isLibrarySourceNote) {
+            menu.addItem((item) => {
+                item.setTitle("ZotFlow: Update source note")
+                    .setIcon("refresh-cw")
+                    .onClick(async () => {
+                        try {
+                            await workerBridge.libraryNote.triggerUpdate(
+                                libraryID as number,
+                                zoteroKey as string,
+                                {},
+                                false,
+                            );
+                            services.notificationService.notify(
+                                "success",
+                                "Source note updated.",
+                            );
+                        } catch (e) {
+                            services.notificationService.notify(
+                                "error",
+                                "Failed to update source note.",
+                            );
+                            services.logService.error(
+                                "Failed to update library source note",
+                                "Main",
+                                e,
+                            );
+                        }
+                    });
+            });
+
+            menu.addItem((item) => {
+                item.setTitle("ZotFlow: Force update source note")
+                    .setIcon("refresh-ccw")
+                    .onClick(async () => {
+                        try {
+                            await workerBridge.libraryNote.triggerUpdate(
+                                libraryID as number,
+                                zoteroKey as string,
+                                {
+                                    forceUpdateContent: true,
+                                    forceUpdateImages: true,
+                                },
+                                false,
+                            );
+                            services.notificationService.notify(
+                                "success",
+                                "Source note force-updated.",
+                            );
+                        } catch (e) {
+                            services.notificationService.notify(
+                                "error",
+                                "Failed to force-update source note.",
+                            );
+                            services.logService.error(
+                                "Failed to force-update library source note",
+                                "Main",
+                                e,
+                            );
+                        }
+                    });
+            });
+        } else if (isLocalSourceNote) {
+            menu.addItem((item) => {
+                item.setTitle("ZotFlow: Update source note")
+                    .setIcon("refresh-cw")
+                    .onClick(async () => {
+                        await this.updateLocalSourceNoteFromMenu(
+                            file,
+                            localAttachment as string,
+                        );
+                    });
+            });
+        }
+    }
+
+    /**
+     * Resolve a local source note's linked attachment + sidecar annotations
+     * and trigger a worker-side note re-render.
+     */
+    private async updateLocalSourceNoteFromMenu(
+        sourceNote: TFile,
+        link: string,
+    ): Promise<void> {
+        try {
+            const linkPath = link
+                .replace(/\[\[|\]\]/g, "")
+                .split("|")[0]!
+                .trim();
+            const dest = this.app.metadataCache.getFirstLinkpathDest(
+                linkPath,
+                sourceNote.path,
+            );
+            if (!dest) {
+                services.notificationService.notify(
+                    "warning",
+                    "Linked attachment file not found.",
+                );
+                return;
+            }
+
+            const sidecarPath = getLocalSidecarPath(
+                dest.path,
+                this.settings.localSidecarFolder,
+            );
+            let annotations: AnnotationJSON[] = [];
+            const sidecar = await checkFile(this.app, sidecarPath);
+            if (sidecar.exists) {
+                const content = await readTextFile(this.app, sidecarPath);
+                if (content) {
+                    try {
+                        const parsed = JSON.parse(content) as {
+                            annotations?: AnnotationJSON[];
+                        };
+                        annotations = parsed.annotations ?? [];
+                    } catch (e) {
+                        services.logService.warn(
+                            `Failed to parse sidecar ${sidecarPath}`,
+                            "Main",
+                            e,
+                        );
+                    }
+                }
+            }
+
+            await workerBridge.localNote.triggerUpdate(
+                {
+                    path: dest.path,
+                    name: dest.name,
+                    extension: dest.extension,
+                    basename: dest.basename,
+                },
+                annotations,
+                false,
+            );
+            services.notificationService.notify(
+                "success",
+                "Source note updated.",
+            );
+        } catch (e) {
+            services.notificationService.notify(
+                "error",
+                "Failed to update source note.",
+            );
+            services.logService.error(
+                "Failed to update local source note",
+                "Main",
+                e,
+            );
+        }
     }
 
     /**
