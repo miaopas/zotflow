@@ -452,7 +452,12 @@ const exposedApi: WorkerAPI = {
 
     createSyncTask: async (libraryId?: number) => {
         assertInitialized();
-        return _taskManager!.createSyncTask(_sync!, libraryId);
+        return _taskManager!.createSyncTask(
+            _sync!,
+            libraryId,
+            _libraryNote!,
+            _currentSettings!,
+        );
     },
 
     createBatchNoteTask: async (

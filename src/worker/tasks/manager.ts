@@ -81,7 +81,12 @@ export class TaskManager {
         return this.startTask(task);
     }
 
-    public async createSyncTask(syncService: SyncService, libraryId?: number) {
+    public async createSyncTask(
+        syncService: SyncService,
+        libraryId?: number,
+        libraryNoteService?: LibraryNoteService,
+        settings?: ZotFlowSettings,
+    ) {
         const scope: number | "all" = libraryId ?? "all";
         const existing = this.activeSyncs.get(scope);
         if (existing) {
@@ -94,7 +99,13 @@ export class TaskManager {
         }
 
         const { SyncTask } = await import("./impl/sync-task");
-        const task = new SyncTask(syncService, libraryId);
+        const task = new SyncTask(
+            syncService,
+            libraryId,
+            this,
+            libraryNoteService,
+            settings,
+        );
         this.activeSyncs.set(scope, task.id);
 
         this.registerTask(task);

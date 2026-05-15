@@ -7,6 +7,7 @@ import { ZotFlowError, ZotFlowErrorCode } from "utils/error";
 
 import type { ZotFlowSettings } from "settings/types";
 import type { IParentProxy } from "bridge/types";
+import type { ItemIdentifier } from "worker/tasks/impl/batch-extract-images-task";
 
 const PULL_BULK_SIZE = 100;
 const UPDATE_BULK_SIZE = 50;
@@ -37,9 +38,13 @@ export class SyncService {
             message: string,
         ) => void,
         libraryId?: number,
-    ): Promise<{ successCount: number; failCount: number }> {
+    ): Promise<{
+        successCount: number;
+        failCount: number;
+        changedItems: ItemIdentifier[];
+    }> {
         if (signal?.aborted) {
-            return { successCount: 0, failCount: 0 };
+            return { successCount: 0, failCount: 0, changedItems: [] };
         }
 
         if (!navigator.onLine) {
@@ -90,7 +95,7 @@ export class SyncService {
                 "No libraries configured for sync.",
                 "SyncService",
             );
-            return { successCount: 0, failCount: 0 };
+            return { successCount: 0, failCount: 0, changedItems: [] };
         }
 
         // Build the active library list for progress reporting
@@ -108,7 +113,7 @@ export class SyncService {
                     `Library ${libraryId} is ignored or not found.`,
                     "SyncService",
                 );
-                return { successCount: 0, failCount: 0 };
+                return { successCount: 0, failCount: 0, changedItems: [] };
             }
         } else {
             for (const libKey of libraries) {
@@ -122,6 +127,7 @@ export class SyncService {
 
         let successCount = 0;
         let failCount = 0;
+        const changedItems: ItemIdentifier[] = [];
 
         this.parentHost.log("debug", "Starting sync", "SyncService");
 
@@ -143,7 +149,7 @@ export class SyncService {
                 try {
                     // Logic: Pull Collections -> Pull Items -> Push Changes (if bidirectional)
                     await this.pullCollections(lib.type, libKey);
-                    await this.pullItems(lib.type, libKey);
+                    await this.pullItems(lib.type, libKey, changedItems);
 
                     if (libConfig.mode === "bidirectional") {
                         for (
@@ -162,7 +168,11 @@ export class SyncService {
                                 `Push returned 412 (attempt ${attempt + 1}/${MAX_PUSH_RETRIES}). Re-pulling before retry...`,
                                 "SyncService",
                             );
-                            await this.pullItems(lib.type, libKey);
+                            await this.pullItems(
+                                lib.type,
+                                libKey,
+                                changedItems,
+                            );
 
                             if (attempt === MAX_PUSH_RETRIES - 1) {
                                 this.parentHost.log(
@@ -209,7 +219,7 @@ export class SyncService {
                 );
             }
 
-            return { successCount, failCount };
+            return { successCount, failCount, changedItems };
         } catch (error: any) {
             // Catastrophic failure (e.g., DB crash)
             this.parentHost.log("error", error.message, "SyncService", error);
@@ -484,7 +494,11 @@ export class SyncService {
     /* ================================================================ */
     /*  Item Pull                                                      */
     /* ================================================================ */
-    private async pullItems(libraryType: "user" | "group", libraryID: number) {
+    private async pullItems(
+        libraryType: "user" | "group",
+        libraryID: number,
+        changedItems?: ItemIdentifier[],
+    ) {
         if (!this.zotero) return;
 
         try {
@@ -574,6 +588,10 @@ export class SyncService {
                             const cleanItem = normalizeItem(newItem, libraryID);
                             cleanItem.syncStatus = "synced";
                             await db.items.put(cleanItem);
+                            changedItems?.push({
+                                libraryID,
+                                itemKey: cleanItem.key,
+                            });
                         }),
                     );
 

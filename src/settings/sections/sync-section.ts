@@ -94,6 +94,26 @@ export class SyncSection {
             });
         });
 
+        // Auto-update source notes after sync
+        settingGroup.addSetting((setting) => {
+            setting
+                .setName("Auto-update source notes after sync")
+                .setDesc(
+                    "When enabled, source notes for items changed during sync are automatically refreshed (incremental — unchanged notes are skipped).",
+                )
+                .addToggle((toggle) => {
+                    toggle
+                        .setValue(
+                            this.plugin.settings.autoUpdateSourceNotesAfterSync,
+                        )
+                        .onChange(async (value) => {
+                            this.plugin.settings.autoUpdateSourceNotesAfterSync =
+                                value;
+                            await this.plugin.saveSettings();
+                        });
+                });
+        });
+
         // Libraries Table
         if (keyInfo) {
             settingGroup.addSetting(async (setting) => {
