@@ -2,7 +2,7 @@ import { FileView, WorkspaceLeaf, TFile, ItemView } from "obsidian";
 import { workerBridge } from "bridge";
 import { IframeReaderBridge } from "./bridge";
 import { LocalDataManager } from "./local-data-manager";
-import { copyAnnotationOnCreate, isNewlyCreated } from "./auto-copy";
+import { copyAnnotationOnCreate } from "./auto-copy";
 import { getLinkedLocalSourceNote } from "utils/file";
 import { openSourceNote } from "utils/viewer";
 
@@ -24,6 +24,7 @@ export class LocalReaderView extends ItemView {
     private colorScheme: ColorScheme = "light"; // Default to light
     private readerOptions: Partial<CreateReaderOptions> = {};
     private dataManager?: LocalDataManager;
+    private knownAnnotationIds = new Set<string>();
 
     constructor(leaf: WorkspaceLeaf) {
         super(leaf);
@@ -218,6 +219,11 @@ export class LocalReaderView extends ItemView {
                 })(),
             ]);
 
+            // Seed known-annotation set so the initial load isn't auto-copied.
+            this.knownAnnotationIds = new Set(
+                (loadedAnnotations ?? []).map((a: AnnotationJSON) => a.id),
+            );
+
             // Initialize Reader if ready
             if (this.bridge.state === "bridge-ready") {
                 // Read persisted view state (including saved themes)
@@ -372,10 +378,16 @@ export class LocalReaderView extends ItemView {
                 this.file,
             )?.path;
             for (const annotation of annotations) {
-                if (!isNewlyCreated(annotation as AnnotationJSON)) continue;
+                const id = (annotation as AnnotationJSON).id;
+                if (this.knownAnnotationIds.has(id)) continue;
+                this.knownAnnotationIds.add(id);
                 await copyAnnotationOnCreate(annotation as AnnotationJSON, {
                     sourceNotePath,
                 });
+            }
+            // Make sure re-saved (existing) annotation IDs are also tracked.
+            for (const annotation of annotations) {
+                this.knownAnnotationIds.add((annotation as AnnotationJSON).id);
             }
         }
     }

@@ -2,7 +2,7 @@ import { ItemView, WorkspaceLeaf } from "obsidian";
 import SparkMD5 from "spark-md5";
 import { workerBridge } from "bridge";
 import { IframeReaderBridge } from "./bridge";
-import { copyAnnotationOnCreate, isNewlyCreated } from "./auto-copy";
+import { copyAnnotationOnCreate } from "./auto-copy";
 import { services } from "services/services";
 import { ViewStateService } from "services/view-state-service";
 import { openSourceNote } from "utils/viewer";
@@ -39,6 +39,7 @@ export class ZoteroReaderView extends ItemView {
     private lastSyncTaskStatuses = new Map<string, ITaskInfo["status"]>();
     /** MD5 of the file blob used to init the reader, for extraction skip check. */
     private fileBlobMD5?: string;
+    private knownAnnotationIds = new Set<string>();
 
     constructor(leaf: WorkspaceLeaf) {
         super(leaf);
@@ -292,6 +293,10 @@ export class ZoteroReaderView extends ItemView {
             const annotationJson = await workerBridge.annotation.getAnnotations(
                 this.attachmentItem,
                 services.settings.zoteroapikey,
+            );
+            // Seed known-annotation set so the initial load isn't auto-copied.
+            this.knownAnnotationIds = new Set(
+                annotationJson.map((a: AnnotationJSON) => a.id),
             );
             // Initialize Reader if ready
             if (this.bridge.state === "bridge-ready") {
@@ -648,7 +653,12 @@ export class ZoteroReaderView extends ItemView {
         }
 
         // Auto-copy newly created annotations (creation only — skips edits).
-        const created = annotations.filter(isNewlyCreated);
+        const created = annotations.filter(
+            (a) => !this.knownAnnotationIds.has(a.id),
+        );
+        // Update the known set for both newly-created and re-saved annotations
+        // so subsequent edits aren't mistaken for creations.
+        for (const a of annotations) this.knownAnnotationIds.add(a.id);
         if (created.length > 0) {
             const parentKey =
                 this.attachmentItem.parentItem === ""

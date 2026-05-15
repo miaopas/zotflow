@@ -72,10 +72,13 @@ export class SyncTask extends BaseTask {
                     await this.resolveNoteBearingItems(changedItems);
                 if (resolved.length > 0) {
                     // Fire-and-forget: spawned task is independently tracked.
+                    // Force content refresh: annotation/note changes do not
+                    // bump the parent item's version, so the version-equality
+                    // short-circuit in performUpdate would otherwise skip them.
                     void this.taskManager.createBatchNoteTask(
                         this.libraryNoteService,
                         { items: resolved },
-                        {},
+                        { forceUpdateContent: true },
                         true,
                     );
                 }
@@ -89,38 +92,43 @@ export class SyncTask extends BaseTask {
 
     /**
      * Resolve a list of changed item identifiers to the set of items whose
-     * source notes should be refreshed. Attachment/note children are swapped
-     * for their parent (source notes are top-level only). Items without a
-     * note-bearing target are dropped. Result is deduplicated.
+     * source notes should be refreshed. Walks parent links upward so that
+     * annotations (parent = attachment), attachments (parent = top-level item),
+     * and child notes are all resolved to their top-level item. Items without
+     * a top-level ancestor are dropped. Result is deduplicated.
      */
     private async resolveNoteBearingItems(
         changed: ItemIdentifier[],
     ): Promise<ItemIdentifier[]> {
+        const CHILD_TYPES = new Set(["annotation", "attachment", "note"]);
+        const MAX_DEPTH = 5; // safety bound — annotation -> attachment -> item
+
         const seen = new Set<string>();
         const out: ItemIdentifier[] = [];
 
         for (const { libraryID, itemKey } of changed) {
-            const item = await db.items.get([libraryID, itemKey]);
+            let item = await db.items.get([libraryID, itemKey]);
             if (!item) continue;
 
-            let targetKey = itemKey;
-            if (item.itemType === "attachment" || item.itemType === "note") {
-                if (!item.parentItem) continue;
-                const parent = await db.items.get([libraryID, item.parentItem]);
-                if (
-                    !parent ||
-                    parent.itemType === "attachment" ||
-                    parent.itemType === "note"
-                ) {
-                    continue;
-                }
-                targetKey = parent.key;
+            // Walk up while the item is a child type with a parentItem.
+            let depth = 0;
+            while (
+                item &&
+                CHILD_TYPES.has(item.itemType) &&
+                item.parentItem &&
+                depth < MAX_DEPTH
+            ) {
+                item = await db.items.get([libraryID, item.parentItem]);
+                depth++;
             }
 
-            const dedupKey = `${libraryID}:${targetKey}`;
+            // Skip if we still have a child-type item (orphan or cycle).
+            if (!item || CHILD_TYPES.has(item.itemType)) continue;
+
+            const dedupKey = `${libraryID}:${item.key}`;
             if (seen.has(dedupKey)) continue;
             seen.add(dedupKey);
-            out.push({ libraryID, itemKey: targetKey });
+            out.push({ libraryID, itemKey: item.key });
         }
 
         return out;
