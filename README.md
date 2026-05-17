@@ -88,7 +88,7 @@ New to ZotFlow? Start here:
 
 For the impatient:
 
-1. Install via [BRAT](https://github.com/TfTHacker/obsidian42-brat): add `duanxianpi/obsidian-zotflow` as a beta plugin.
+1. Open **Settings → Community plugins → Browse**, search for **ZotFlow**, install and enable it. (Or grab it from the [Obsidian plugin directory](https://community.obsidian.md/plugins/zotflow).)
 2. Create a [Zotero API key](https://www.zotero.org/settings/keys/new) with read/write access.
 3. Paste it into **Settings → ZotFlow → Sync** and click **Verify Key**.
 4. Open the **Activity Center** (ribbon icon) → **Sync All**.
@@ -110,9 +110,16 @@ Full guides live in [docs/](docs/README.md):
 
 ## Installation
 
-> **Note:** ZotFlow is currently in beta and not yet in the official Obsidian Community Plugins store.
+### Option 1 — Obsidian Community Plugins (recommended)
 
-Install via [BRAT](https://github.com/TfTHacker/obsidian42-brat):
+1. Open Obsidian → **Settings (⚙️) → Community plugins**.
+2. Click **Browse**, search for **ZotFlow**, install and enable it.
+
+Direct link: [https://community.obsidian.md/plugins/zotflow](https://community.obsidian.md/plugins/zotflow)
+
+### Option 2 — Beta builds via BRAT
+
+For pre-release builds, install via [BRAT](https://github.com/TfTHacker/obsidian42-brat):
 
 1. Install and enable **BRAT** from Community Plugins.
 2. In BRAT's options, click **Add Beta plugin** and enter: `duanxianpi/obsidian-zotflow`

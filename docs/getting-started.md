@@ -108,9 +108,19 @@ You'll interact with ZotFlow mostly through two UI surfaces. Get familiar with t
 
 ## Part 2 — Installation
 
-> **Note:** ZotFlow is currently in beta and is not yet in the official Obsidian Community Plugins store.
+ZotFlow is available in the official Obsidian Community Plugins store. Pre-release builds are also available via BRAT.
 
-### Install via BRAT
+### Option A — Community Plugins (recommended)
+
+1. Open Obsidian → **Settings (⚙️) → Community plugins**.
+2. Make sure **Restricted mode** is **off**.
+3. Click **Browse**, search for **ZotFlow**, click **Install**, then **Enable**.
+
+Direct link: [https://community.obsidian.md/plugins/zotflow](https://community.obsidian.md/plugins/zotflow)
+
+### Option B — Beta builds via BRAT
+
+Use this path if you want early access to features that haven't been promoted to the stable release yet.
 
 1. **Install BRAT**
     - Open Obsidian → **Settings (⚙️) → Community plugins**.
@@ -123,7 +133,7 @@ You'll interact with ZotFlow mostly through two UI surfaces. Get familiar with t
     - Click **Add Plugin**.
 
 3. **Enable ZotFlow**
-    - Back in **Settings → Community plugins**, find **Obsidian ZotFlow**.
+    - Back in **Settings → Community plugins**, find **ZotFlow**.
     - Toggle it on.
 
 ---
