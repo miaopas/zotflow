@@ -91,8 +91,8 @@
 } */
 
 /* Suggestion Header */
-.suggestion-item.zotflow-suggestion-header {
-    background-color: transparent !important;
+.prompt-results .suggestion-item.zotflow-suggestion-header {
+    background-color: transparent;
     padding: var(--size-2-2) var(--size-4-3);
     font-size: var(--font-ui-smaller);
     font-weight: var(--font-semibold);
@@ -108,8 +108,8 @@
 }
 
 /* Empty State */
-.suggestion-item.zotflow-suggestion-empty {
-    background-color: transparent !important;
+.prompt-results .suggestion-item.zotflow-suggestion-empty {
+    background-color: transparent;
     font-size: var(--font-ui-smaller);
     pointer-events: none;
     border-bottom: none;
@@ -174,8 +174,8 @@
    Settings
    ============================================================ */
 
-.vertical-tab-content:has(.zotflow-settings-container) {
-    padding-bottom: 0 !important;
+.vertical-tab-content.zotflow-settings-tab {
+    padding-bottom: 0;
 }
 
 .zotflow-settings-title {
@@ -328,8 +328,7 @@
    ============================================================ */
 
 .zotflow-tree {
-    padding: 10px;
-    padding-bottom: 0 !important;
+    padding: 10px 10px 0;
 }
 
 .zotflow-tree-view-layout {
@@ -371,7 +370,6 @@
     margin-inline-end: 6px;
     margin-bottom: var(--nav-item-margin-bottom);
     border-radius: var(--nav-item-radius);
-    cursor: var(--cursor);
     color: var(--nav-item-color);
     font-size: var(--nav-item-size);
     font-weight: var(--nav-item-weight);
@@ -1014,10 +1012,10 @@
     color: var(--text-faint);
 }
 
-.zotflow-sync-time-cell {
+.zotflow-sync-lib-table td.zotflow-sync-time-cell {
     font-family: var(--font-monospace);
-    font-size: var(--font-ui-smaller) !important;
-    color: var(--text-faint) !important;
+    font-size: var(--font-ui-smaller);
+    color: var(--text-faint);
     white-space: nowrap;
 }
 

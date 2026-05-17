@@ -1,5 +1,4 @@
 // scripts/generate-types-from-file.ts
-import axios from "axios";
 import * as fs from "fs";
 import * as path from "path";
 import { format } from "prettier";
@@ -10,8 +9,13 @@ const __dirname = path.resolve();
 const SCHEMA_URL = "https://api.zotero.org/schema";
 
 async function generate() {
-    const rawData = await axios.get(SCHEMA_URL);
-    const schema = rawData.data;
+    const response = await fetch(SCHEMA_URL);
+    if (!response.ok) {
+        throw new Error(
+            `Failed to fetch schema: ${response.status} ${response.statusText}`,
+        );
+    }
+    const schema = await response.json();
 
     let output = `
 /**

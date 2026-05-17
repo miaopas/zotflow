@@ -24,6 +24,7 @@ export class ZotFlowSettingTab extends PluginSettingTab {
 
         const { containerEl } = this;
         containerEl.empty();
+        containerEl.addClass("zotflow-settings-tab");
 
         const settingsContainer = containerEl.createDiv({
             cls: "zotflow-settings-container",
