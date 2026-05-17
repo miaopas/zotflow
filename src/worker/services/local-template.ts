@@ -185,6 +185,10 @@ export class LocalTemplateService {
                         })) || [],
                     dateAdded: annotation.dateAdded,
                     dateModified: annotation.dateModified,
+                    isExternal: annotation.isExternal === true,
+                    readOnly:
+                        annotation.readOnly === true ||
+                        annotation.isExternal === true,
                     // Provide raw object for filter usage, ensuring it's an object, not string
                     raw: annotation,
                 };

@@ -95,5 +95,9 @@ export interface AnnotationTemplateContext {
     tags: Array<{ tag: string; type?: number }>;
     dateAdded: string;
     dateModified: string;
+    /** True for external annotations extracted from the embedded PDF. */
+    isExternal: boolean;
+    /** True when the annotation is read-only (external, or not authored by the user). */
+    readOnly: boolean;
     raw: AnnotationJSON;
 }

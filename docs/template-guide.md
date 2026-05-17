@@ -669,10 +669,9 @@ Two region types are supported:
 
 ```liquid
 {%- if item.notes.length > 0 -%}
-## Notes
 {%- for note in item.notes -%}
-### {{ note.title | default: "Note" }}
 {{ note.note | html2md | wrap_editable: "NOTE", note.key }}
+
 {%- endfor -%}
 {%- endif -%}
 ```
@@ -694,18 +693,26 @@ When the user edits the unlocked region and the debounce fires, ZotFlow converts
 So just pipe directly to `wrap_editable`:
 
 ```liquid
+{%- if item.attachments.length > 0 and item.attachmentAnnotations.length > 0 -%}
+## Annotations
+{%- for attachment in item.attachments -%}
+{%- if attachment.annotations.length > 0 -%}
+### {{ attachment.filename }}
 {%- for annotation in attachment.annotations -%}
-> [!zotflow-{{ annotation.type }}-{{ annotation.color }}] [{{ attachment.filename }}, p.{{ annotation.pageLabel }}](...)
-{%- if annotation.type == "ink" or annotation.type == "image" -%}
-> > ![[{{ settings.annotationImageFolder }}/{{ annotation.key }}.png]]
+> [!zotflow-{{ annotation.type }}-{{ annotation.color }}] [{{ attachment.filename }}, p.{{ annotation.pageLabel }}](obsidian://zotflow?type=open-attachment&libraryID={{ attachment.libraryID }}&key={{ attachment.key }}&navigation={{ annotation.key | process_nav_info}})
+{%- if annotation.type == "ink" or annotation.type == "image"-%}
+> > ![[{{settings.annotationImageFolder}}/{{ annotation.key }}.png]]
 {%- else -%}
 > > {{ annotation.text | replace: newline, quote_string_2 }}
 {%- endif -%}
-{%- if annotation.comment != "" -%}
 >
-{{ annotation.comment | wrap_editable: "ANNO", annotation.key }}
-{%- endif -%}^{{ annotation.key }}
+> {{ annotation.comment | wrap_editable: "ANNO", annotation.key | replace: newline, quote_string }}
+^{{ annotation.key }}
+
 {%- endfor -%}
+{%- endif -%}
+{%- endfor -%}
+{%- endif -%}
 ```
 
 On save, ZotFlow runs the reverse pass (`annoMd2html`): `**` → `<b>`, `*` → `<i>`, `<sub>`/`<sup>` kept, escaped `\<`/`\>` unescaped. Any other HTML is stripped before writing back to IndexedDB.

@@ -410,6 +410,20 @@ export class AnnotationService {
         }
 
         const annotation = item as IDBZoteroItem<AnnotationData>;
+
+        // External annotations (extracted from the embedded PDF) are
+        // read-only — they are owned by the PDF, not by Zotero, and any
+        // re-extraction would overwrite local edits.  Ignore edit-wrapper
+        // writes for them.
+        if (annotation.raw.data.annotationIsExternal === true) {
+            this.parentHost.log(
+                "debug",
+                `updateAnnotationComment: skipping external annotation ${annotationKey}`,
+                "AnnotationService",
+            );
+            return;
+        }
+
         const newComment = this.convertService.annoMd2html(markdownComment);
 
         // Skip write if comment hasn't changed

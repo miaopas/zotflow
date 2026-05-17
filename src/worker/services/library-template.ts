@@ -50,12 +50,10 @@ doi: {{ item.DOI | json }}
 
 {%- endif -%}
 {%- if item.notes.length > 0 -%}
-## Notes
 {%- for note in item.notes -%}
-### {{ note.title | default: "Note" }}
-{{ note.note }}
-{%- endfor -%}
+{{ note.note | html2md | wrap_editable: "NOTE", note.key }}
 
+{%- endfor -%}
 {%- endif -%}
 {%- if item.attachments.length > 0 and item.attachmentAnnotations.length > 0 -%}
 ## Annotations
@@ -69,10 +67,9 @@ doi: {{ item.DOI | json }}
 {%- else -%}
 > > {{ annotation.text | replace: newline, quote_string_2 }}
 {%- endif -%}
-{%- if annotation.comment != "" -%}
 >
-> {{ annotation.comment | replace: newline, quote_string }}
-{%- endif -%}^{{ annotation.key }}
+> {{ annotation.comment | wrap_editable: "ANNO", annotation.key | replace: newline, quote_string }}
+^{{ annotation.key }}
 
 {%- endfor -%}
 {%- endif -%}
@@ -80,17 +77,16 @@ doi: {{ item.DOI | json }}
 {%- endif -%}
 {%- if item.attachments.length == 0 and item.itemType == "attachment" and item.annotations.length > 0 -%}
 ## Annotations
-{%- for annotation in item.annotations -%}
+{%- for annotation in attachment.annotations -%}
 > [!zotflow-{{ annotation.type }}-{{ annotation.color }}] [{{ item.title }}, p.{{ annotation.pageLabel }}](obsidian://zotflow?type=open-attachment&libraryID={{ item.libraryID }}&key={{ item.key }}&navigation={{ annotation.key | process_nav_info}})
 {%- if annotation.type == "ink" or annotation.type == "image"-%}
 > > ![[{{settings.annotationImageFolder}}/{{ annotation.key }}.png]]
 {%- else -%}
 > > {{ annotation.text | replace: newline, quote_string_2 }}
 {%- endif -%}
-{%- if annotation.comment != "" -%}
 >
-> {{ annotation.comment | replace: newline, quote_string }}
-{%- endif -%}^{{ annotation.key }}
+> {{ annotation.comment | wrap_editable: "ANNO", annotation.key | replace: newline, quote_string }}
+^{{ annotation.key }}
 
 {%- endfor -%}
 {%- endif -%}
@@ -141,8 +137,28 @@ export class LibraryTemplateService {
         });
         this.engine.registerFilter(
             "wrap_editable",
-            (input: string, type: string, key: string) => {
+            /**
+             * Wrap content in ZF_<TYPE>_BEG/END markers so the CM6 editable
+             * region extension can mount an editable zone.
+             *
+             * The filter consults a per-render `__zfReadOnlyKeys: Set<string>`
+             * stashed on the Liquid context (populated by `prepareItemContext`)
+             * to decide whether the region is actually editable.  When the key
+             * is in the set (e.g. an external annotation, different author in
+             * a group library), the markers are omitted so the content renders
+             * as plain locked text.
+             *
+             * Falls back to wrapping when the set is absent (e.g. preview /
+             * citation render paths that don't prep one), preserving the old
+             * behaviour for callers that don't opt in.
+             */
+            function (this: any, input: string, type: string, key: string) {
                 if (!type || !key) return input;
+                const readOnlyKeys: Set<string> | undefined =
+                    this?.context?.environments?.__zfReadOnlyKeys;
+                if (readOnlyKeys && readOnlyKeys.has(`${type}:${key}`)) {
+                    return input;
+                }
                 return `<!-- ZF_${type}_BEG_${key} -->\n${input}\n<!-- ZF_${type}_END_${key} -->`;
             },
         );
@@ -384,13 +400,28 @@ export class LibraryTemplateService {
     }
 
     private async prepareItemContext(item: AnyIDBZoteroItem): Promise<any> {
+        const itemContext = await this.mapToItemContext(item);
+
+        // Build a Set of `${type}:${key}` for regions that must NOT be wrapped
+        // as editable.  Currently: annotations flagged readOnly (external, or
+        // not authored by the current user).  Built once per render so the
+        // wrap_editable filter is O(1) per call.
+        const readOnlyKeys = new Set<string>();
+        for (const a of itemContext.annotations) {
+            if (a.readOnly) readOnlyKeys.add(`ANNO:${a.key}`);
+        }
+        for (const a of itemContext.attachmentAnnotations) {
+            if (a.readOnly) readOnlyKeys.add(`ANNO:${a.key}`);
+        }
+
         return {
-            item: await this.mapToItemContext(item),
+            item: itemContext,
             settings: {
                 ...this.settings,
                 annotationImageFolder:
                     this.settings.annotationImageFolder.replace(/\/$/, ""),
             },
+            __zfReadOnlyKeys: readOnlyKeys,
         };
     }
 
@@ -523,6 +554,8 @@ export class LibraryTemplateService {
             tags: annotation.tags?.map((t) => ({ tag: t.name })) || [],
             dateAdded: annotation.dateAdded,
             dateModified: annotation.dateModified,
+            isExternal: annotation.isExternal === true,
+            readOnly: annotation.readOnly === true,
 
             raw: annotation,
         };
