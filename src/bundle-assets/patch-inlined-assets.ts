@@ -81,9 +81,6 @@ export function patchPDFJSViewerHTML(
     const parser = new DOMParser();
     const doc = parser.parseFromString(text, "text/html");
 
-    // Guard: ensure <head> exists (PDF viewer.html should have it)
-    const head = doc.head || doc.getElementsByTagName("head")[0];
-
     const cssLinks = doc.querySelectorAll(
         'link[rel="stylesheet"][href="viewer.css"]',
     );
@@ -112,16 +109,14 @@ export function patchPDFJSViewerHTML(
         }
     });
 
-    // Build the patch scripts (order: first the map, then the monkey patch)
-    const blobMapScript = doc.createElement("script");
-    blobMapScript.type = "module";
-    blobMapScript.textContent = `
-        window.BLOB_URL_MAP = ${JSON.stringify(BLOB_URL_MAP)};
-    `.trim();
+    // Build the patch scripts as raw HTML strings (injected before </head> below
+    // during serialization).
+    const blobMapScriptHTML =
+        '<script type="module">' +
+        `window.BLOB_URL_MAP = ${JSON.stringify(BLOB_URL_MAP)};` +
+        "</script>";
 
-    const patchScript = doc.createElement("script");
-    patchScript.type = "module";
-    patchScript.textContent = `
+    const patchScriptBody = `
         function getBlobUrlForRequest(requestedUrl) {
             if (!requestedUrl) return null;
             const isRelative = !/^[a-zA-Z][a-zA-Z\\d+\\-.]*:/.test(requestedUrl) && !requestedUrl.startsWith("//");
@@ -184,90 +179,32 @@ export function patchPDFJSViewerHTML(
     // };
     // xhr.send();
     `.trim();
-    // 	patchScript.textContent = `
-    //     /** Find matching resource key and return its blob URL */
-    //     function getBlobUrlForRequest(requestedUrl) {
-    //       const isRelative = (u) => !/^[a-zA-Z][a-zA-Z\\d+\\-.]*:/.test(u) && !u.startsWith("//");
-    //       if (isRelative(requestedUrl)) {
-    //         return globalThis.BLOB_URL_MAP[requestedUrl] ||
-    //           globalThis.BLOB_URL_MAP[
-    //             Object.keys(globalThis.BLOB_URL_MAP).find(key =>
-    //               key.includes(requestedUrl.match(/([^\\/?#]+)(?:\\?.*)?$/)[1])
-    //             )
-    //           ];
-    //       }
-    //     }
 
-    //     // ---------- patched fetch ----------
-    //     const realFetch = window.fetch.bind(window);
-    //     window.fetch = async function patchedFetch(input, init) {
-    //       const url = typeof input === "string" ? input
-    //         : input instanceof Request ? input.url
-    //         : input instanceof URL ? input.toString()
-    //         : "";
-    //       const blobUrl = getBlobUrlForRequest(url);
-    //       if (blobUrl) {
-    //         // If the request is for a blob URL, we return the blob URL directly
-    //         console.debug("Patched fetch for URL:", url, "-> Blob URL:", blobUrl);
-    //         return realFetch(blobUrl, init);
-    //       }
-    //       return realFetch(input, init);
-    //     };
+    const patchScriptHTML =
+        '<script type="module">' + patchScriptBody + "</script>";
 
-    //     // ---------- patched XMLHttpRequest ----------
-    //     const NativeXHR = window.XMLHttpRequest;
-    //     function PatchedXHR() {
-    //       const real = new NativeXHR();
-    //       return new Proxy(real, {
-    //         get(target, prop, receiver) {
-    //           if (prop === 'open') {
-    //             return function open(method, url, async = true, user, pw) {
-    //               const mapped = getBlobUrlForRequest(url);
-    //               // If the request is for a blob URL, we return the blob URL directly
-    //               mapped && console.debug("Patched XHR open for URL:", url, "-> Blob URL:", mapped);
-    //               return target.open.call(target, method, mapped || url, async, user, pw);
-    //             };
-    //           }
-    //           const value = Reflect.get(target, prop, receiver);
-    //             if (typeof value === 'function') return value.bind(target);
-    //           return value;
-    //         },
-    //         set(target, prop, value) {
-    //           (target)[prop] = value;
-    //           return true;
-    //         }
-    //       });
-    //     }
-    //     Object.getOwnPropertyNames(NativeXHR).forEach(k => {
-    //       if ((k in PatchedXHR)) {
-    //         Object.defineProperty(
-    //           PatchedXHR,
-    //           k,
-    //           Object.getOwnPropertyDescriptor(NativeXHR, k)
-    //         );
-    //       }
-    //     });
-    //     window.XMLHttpRequest = PatchedXHR;
-
-    //   `.trim();
-
-    // Insert both at head start (prepend order: second inserted first so final order is map then patch)
-    if (head.firstChild) {
-        head.insertBefore(patchScript, head.firstChild);
-        head.insertBefore(blobMapScript, head.firstChild);
-    } else {
-        head.appendChild(blobMapScript);
-        head.appendChild(patchScript);
-    }
-
-    // Serialize DOM back to HTML
+    // Serialize DOM back to HTML, then string-inject the two patch scripts at
+    // the very top of <head>. String injection (rather than DOM insertion) is
+    // intentional — see the comment above where blobMapScriptHTML is built.
     const doctype = Array.from(doc.childNodes).find(
         (n) => n.nodeType === Node.DOCUMENT_TYPE_NODE,
     ) as DocumentType | undefined;
 
-    const serialized =
+    let serialized =
         (doctype ? `<!DOCTYPE ${doctype.name}>\n` : "<!DOCTYPE html>\n") +
         doc.documentElement.outerHTML;
+
+    // Insert: blob map first, then the monkey patch (both before any existing
+    // child of <head>). Falls back to appending right before </head>.
+    const injected = blobMapScriptHTML + patchScriptHTML;
+    const headOpenMatch = serialized.match(/<head\b[^>]*>/i);
+    if (headOpenMatch) {
+        const idx = headOpenMatch.index! + headOpenMatch[0].length;
+        serialized =
+            serialized.slice(0, idx) + injected + serialized.slice(idx);
+    } else {
+        serialized = serialized.replace(/<\/head>/i, injected + "</head>");
+    }
 
     return serialized;
 }
