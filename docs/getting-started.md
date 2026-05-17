@@ -43,6 +43,25 @@ Use this path if you want early access to features that haven't been promoted to
 
 ## Part 2 — Connect to Zotero
 
+### Prerequisites: Zotero Sync
+
+ZotFlow fetches your library from the **Zotero Web API**, which means your items must already be synced to Zotero's servers. Before continuing:
+
+1. Open the **Zotero desktop app** → **Edit → Settings → Sync** (or **Zotero → Preferences → Sync** on macOS).
+2. Sign in with your Zotero account and make sure **Data Syncing** is enabled.
+3. Click **Sync** (the green circular arrow) and wait for it to finish.
+
+**What about attachments (PDFs)?** Zotero syncs item metadata for free, but attachment files need storage space. If your attachment library is large, you have three options:
+
+| Option             | Details                                                                                                                                                                                                              |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Zotero Storage** | Built-in, zero-config. Free tier: 300 MB. Paid plans start at $20/year for 2 GB. [See plans →](https://www.zotero.org/storage)                                                                                       |
+| **WebDAV**         | Self-hosted or third-party (e.g. [Box](https://www.box.com), [pCloud](https://www.pcloud.com), [koofr](https://koofr.eu)). Free tiers available. Configure in **Settings → ZotFlow → WebDAV** after setup.           |
+| **Linked files**   | Store PDFs anywhere on disk (or third-party cloud service); Zotero links to them. Set the base directory in **Settings → ZotFlow → General → Linked Attachment Base Directory**. This only works on desktop version. |
+
+> [!tip]
+> You don't need attachment sync to use ZotFlow's source notes, citations, or the tree view — those only need metadata. Attachment storage only matters if you want to open PDFs inside the ZotFlow reader.
+
 ### Create a Zotero API Key
 
 1. Go to [https://www.zotero.org/settings/keys/new](https://www.zotero.org/settings/keys/new).
