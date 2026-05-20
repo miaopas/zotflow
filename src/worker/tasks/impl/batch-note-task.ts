@@ -13,7 +13,11 @@ import type { ItemIdentifier } from "./batch-extract-images-task";
  * Items are queried from IDB at task start to ensure freshness.
  */
 export interface BatchNoteInput {
-    /** Specific items to process. If empty, all synced items are used. */
+    /**
+     * Items to process. Callers are responsible for resolving the desired
+     * scope (e.g. all top-level items across active libraries) before
+     * scheduling the task — an empty/missing `items` list is a no-op.
+     */
     items?: ItemIdentifier[];
 }
 
@@ -121,20 +125,21 @@ export class BatchNoteTask extends BaseTask {
     }
 
     /**
-     * Resolve the item list from database based on input descriptor.
+     * Resolve the item list from the input descriptor.
+     * Callers must supply `input.items` — an empty/missing list yields
+     * an empty result (the task is a no-op rather than implicitly
+     * targeting every synced item).
      */
     private async resolveItems() {
-        // If specific items are provided, fetch those directly
-        if (this.input.items && this.input.items.length > 0) {
-            const items = [];
-            for (const { libraryID, itemKey } of this.input.items) {
-                const item = await db.items.get([libraryID, itemKey]);
-                if (item) {
-                    items.push(item);
-                }
+        if (!this.input.items || this.input.items.length === 0) return [];
+
+        const items = [];
+        for (const { libraryID, itemKey } of this.input.items) {
+            const item = await db.items.get([libraryID, itemKey]);
+            if (item) {
+                items.push(item);
             }
-            return items;
         }
-        return [];
+        return items;
     }
 }

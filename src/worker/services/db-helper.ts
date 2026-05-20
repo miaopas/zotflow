@@ -42,6 +42,35 @@ export class DbHelperService {
     }
 
     /**
+     * Get { libraryID, itemKey } for every non-trashed top-level item across
+     * the currently active libraries. Used by batch commands that need to
+     * enumerate every source-note-bearing item.
+     */
+    async getAllTopLevelItemIdentifiers(): Promise<
+        { libraryID: number; itemKey: string }[]
+    > {
+        const libraryIDs = await this.getFilteredLibraryIDs();
+        if (libraryIDs.length === 0) return [];
+
+        const isValidTopLevel = (type: string) =>
+            !(["note", "annotation", "attachment"] as string[]).includes(type);
+        const validTopLevelTypeList = Zotero_Item_Types.filter((type) =>
+            isValidTopLevel(type),
+        );
+
+        const items = await db.items
+            .where(["libraryID", "itemType", "trashed"])
+            .anyOf(getCombinations([libraryIDs, validTopLevelTypeList, [0]]))
+            .filter((item: AnyIDBZoteroItem) => !item.parentItem)
+            .toArray();
+
+        return items.map((i) => ({
+            libraryID: i.libraryID,
+            itemKey: i.key,
+        }));
+    }
+
+    /**
      * Look up any item by library + key.
      * Returns `undefined` if the item doesn't exist.
      */

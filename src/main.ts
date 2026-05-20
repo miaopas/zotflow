@@ -233,10 +233,18 @@ export default class ZotFlow extends Plugin {
 
         this.addCommand({
             id: "update-all-library-source-notes",
-            name: "Update all library source notes (incremental)",
+            name: "Update all library source notes (skip up-to-date)",
             callback: async () => {
                 await this.runTaskCommand(
-                    () => workerBridge.createBatchNoteTask({}, {}, false),
+                    async () => {
+                        const items =
+                            await workerBridge.dbHelper.getAllTopLevelItemIdentifiers();
+                        return workerBridge.createBatchNoteTask(
+                            { items },
+                            {},
+                            false,
+                        );
+                    },
                     "Library source note update started",
                     "Failed to start library source note update",
                 );
@@ -245,18 +253,21 @@ export default class ZotFlow extends Plugin {
 
         this.addCommand({
             id: "force-update-all-library-source-notes",
-            name: "Update all library source notes (force update)",
+            name: "Force update all library source notes",
             callback: async () => {
                 await this.runTaskCommand(
-                    () =>
-                        workerBridge.createBatchNoteTask(
-                            {},
+                    async () => {
+                        const items =
+                            await workerBridge.dbHelper.getAllTopLevelItemIdentifiers();
+                        return workerBridge.createBatchNoteTask(
+                            { items },
                             {
                                 forceUpdateContent: true,
                                 forceUpdateImages: true,
                             },
                             true,
-                        ),
+                        );
+                    },
                     "Library source note force-update started",
                     "Failed to start library source note force-update",
                 );
