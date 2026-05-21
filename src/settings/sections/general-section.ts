@@ -240,6 +240,26 @@ export class GeneralSection {
 
         zoteroReaderSettingGroup.addSetting((setting) => {
             setting
+                .setName(
+                    "Turn off note, text, and image annotation tools after each use",
+                )
+                .setDesc(
+                    "When enabled, the note, text, and image tools automatically revert to the pointer after creating an annotation. Requires restart Reader to apply.",
+                )
+                .addToggle((toggle) => {
+                    toggle.setValue(
+                        this.plugin.settings.autoDisableNoteImageTextTools,
+                    );
+                    toggle.onChange(async (value) => {
+                        this.plugin.settings.autoDisableNoteImageTextTools =
+                            value;
+                        await this.plugin.saveSettings();
+                    });
+                });
+        });
+
+        zoteroReaderSettingGroup.addSetting((setting) => {
+            setting
                 .setName("Reader UI Color Scheme")
                 .setDesc("Color scheme for the Zotero Reader UI.")
                 .addDropdown((dropdown) => {

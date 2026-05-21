@@ -27,6 +27,9 @@ export interface CreateReaderOptions {
     primaryViewState?: Record<string, unknown>;
     secondaryViewState?: Record<string, unknown>;
     readOnly?: boolean;
+    autoDisableNoteTool?: boolean;
+    autoDisableTextTool?: boolean;
+    autoDisableImageTool?: boolean;
 }
 
 /** Discriminated union of all events the reader iframe can emit to the parent. */

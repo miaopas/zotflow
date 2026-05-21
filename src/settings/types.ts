@@ -74,6 +74,7 @@ export interface ZotFlowSettings {
     citationWikilinkTemplate: string;
     autoCopyAnnotation: AutoCopyAnnotationMode;
     autoUpdateSourceNotesAfterSync: boolean;
+    autoDisableNoteImageTextTools: boolean;
 }
 
 /** Persisted reader view state for a single attachment (local or zotero). */
@@ -132,6 +133,7 @@ export const DEFAULT_SETTINGS: ZotFlowSettings = {
     citationWikilinkTemplate: "",
     autoCopyAnnotation: "off",
     autoUpdateSourceNotesAfterSync: true,
+    autoDisableNoteImageTextTools: true,
 };
 
 /** Default shape of the full `data.json` blob (settings + view states). */

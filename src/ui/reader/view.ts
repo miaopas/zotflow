@@ -324,11 +324,16 @@ export class ZoteroReaderView extends ItemView {
                 // Read-only when sync mode is read-only
                 const isReadOnly = services.libraryCache.isReadOnly(libID);
 
+                const autoDisable =
+                    services.settings.autoDisableNoteImageTextTools;
                 const opts: Partial<CreateReaderOptions> = {
                     annotations: annotationJson,
                     primaryViewState: savedViewState?.primaryViewState,
                     colorScheme: this.colorScheme,
                     customThemes: services.viewStateService.getCustomThemes(),
+                    autoDisableNoteTool: autoDisable,
+                    autoDisableTextTool: autoDisable,
+                    autoDisableImageTool: autoDisable,
                     ...themeOverrides,
                     ...(isReadOnly ? { readOnly: true } : {}),
                 };

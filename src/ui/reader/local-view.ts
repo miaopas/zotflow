@@ -243,12 +243,17 @@ export class LocalReaderView extends ItemView {
                     darkTheme: viewState?.darkTheme ?? themeDefaults.darkTheme,
                 };
 
+                const autoDisable =
+                    services.settings.autoDisableNoteImageTextTools;
                 const opts: Partial<CreateReaderOptions> = {
                     ...this.readerOptions,
                     annotations: loadedAnnotations,
                     colorScheme: this.colorScheme,
                     primaryViewState: viewState?.primaryViewState,
                     customThemes: services.viewStateService.getCustomThemes(),
+                    autoDisableNoteTool: autoDisable,
+                    autoDisableTextTool: autoDisable,
+                    autoDisableImageTool: autoDisable,
                     ...themeOverrides,
                 };
 
