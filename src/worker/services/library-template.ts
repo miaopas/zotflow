@@ -232,14 +232,31 @@ export class LibraryTemplateService {
                 }
             }
 
-            // Merge Frontmatter (Original + Rendered Template)
-            // Merge = Original + Template. Template keys overwrite Original keys.
-            const finalFrontmatter = {
+            // Merge Frontmatter using the prefix protocol:
+            //   `??key` in template => preserve; only written if key absent
+            //                          in the existing note's frontmatter
+            //   bare `key`          => overwrite (default; refreshed each
+            //                          update from the rendered template)
+            // The `??` prefix is stripped from the final key.
+            const finalFrontmatter: Record<string, any> = {
                 ...originalFrontmatter,
-                ...templateFrontmatter,
             };
+            for (const [rawKey, value] of Object.entries(
+                templateFrontmatter || {},
+            )) {
+                const preserve = rawKey.startsWith("??");
+                const key = preserve ? rawKey.slice(2) : rawKey;
+                if (!key) continue;
+                if (preserve) {
+                    if (!(key in finalFrontmatter)) {
+                        finalFrontmatter[key] = value;
+                    }
+                } else {
+                    finalFrontmatter[key] = value;
+                }
+            }
 
-            // Ensure Mandatory Fields
+            // Ensure Mandatory Fields (always overwritten)
             finalFrontmatter["zotflow-locked"] = true;
             finalFrontmatter["zotero-key"] = item.key;
             finalFrontmatter["item-version"] = item.version;
