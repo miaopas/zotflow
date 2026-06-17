@@ -187,13 +187,15 @@ export default class ZotFlow extends Plugin {
         }
 
         // Ensure MathJax is loaded
+        const tempComponent = new Component();
         MarkdownRenderer.render(
             this.app,
             "$\\int$",
             document.createElement("div"),
             "",
-            new Component(),
+            tempComponent,
         );
+        tempComponent.unload();
 
         this.addRibbonIcon(
             "zotero-icon",

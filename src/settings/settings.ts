@@ -77,12 +77,13 @@ export class ZotFlowSettingTab extends PluginSettingTab {
 
     private renderNav(containerEl: HTMLElement) {
         const navContainer = containerEl.createDiv();
-        navContainer.style.display = "flex";
-        navContainer.style.marginTop = "0.5rem";
-        navContainer.style.borderBottom =
-            "1px solid var(--background-modifier-border)";
-        navContainer.style.overflowX = "auto";
-        navContainer.style.overflowY = "auto";
+        navContainer.setCssStyles({
+            display: "flex",
+            marginTop: "0.5rem",
+            borderBottom: "1px solid var(--background-modifier-border)",
+            overflowX: "auto",
+            overflowY: "auto",
+        });
 
         const tabs: { id: TabSection; label: string; icon: string }[] = [
             { id: "general", label: "General", icon: "settings" },
@@ -95,16 +96,16 @@ export class ZotFlowSettingTab extends PluginSettingTab {
         tabs.forEach((tab) => {
             const navItem = navContainer.createDiv({ cls: "nav-item" });
 
-            navItem.style.cursor = "pointer";
-            navItem.style.padding = "6px 24px";
-            navItem.style.display = "flex";
-            navItem.style.alignItems = "center";
-            navItem.style.gap = "6px";
-            navItem.style.fontWeight = "500";
-            navItem.style.fontSize = "0.9rem";
-            navItem.style.transition =
-                "background-color 0.2s ease, color 0.2s ease";
-            navItem.style.fontSize = "var(--font-ui-small)";
+            navItem.setCssStyles({
+                cursor: "pointer",
+                padding: "6px 24px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontWeight: "500",
+                transition: "background-color 0.2s ease, color 0.2s ease",
+                fontSize: "var(--font-ui-small)",
+            });
 
             // Icon
             const iconSpan = navItem.createSpan({ cls: "nav-icon" });
@@ -115,28 +116,34 @@ export class ZotFlowSettingTab extends PluginSettingTab {
 
             // State Styles
             if (this.activeTab === tab.id) {
-                navItem.style.color = "var(--text-normal)";
-                navItem.style.fontWeight = "600";
-                navItem.style.borderBottom =
-                    "2px solid var(--interactive-accent)";
+                navItem.setCssStyles({
+                    color: "var(--text-normal)",
+                    fontWeight: "600",
+                    borderBottom: "2px solid var(--interactive-accent)",
+                });
             } else {
                 // Inactive: Transparent background, muted text
-                navItem.style.backgroundColor = "transparent";
-                navItem.style.color = "var(--text-muted)";
+                navItem.setCssStyles({
+                    backgroundColor: "transparent",
+                    color: "var(--text-muted)",
+                });
             }
 
             // Hover Effect
             navItem.addEventListener("mouseenter", () => {
                 if (this.activeTab !== tab.id) {
-                    navItem.style.backgroundColor =
-                        "var(--background-modifier-hover)";
-                    navItem.style.color = "var(--text-normal)";
+                    navItem.setCssStyles({
+                        backgroundColor: "var(--background-modifier-hover)",
+                        color: "var(--text-normal)",
+                    });
                 }
             });
             navItem.addEventListener("mouseleave", () => {
                 if (this.activeTab !== tab.id) {
-                    navItem.style.backgroundColor = "transparent";
-                    navItem.style.color = "var(--text-muted)";
+                    navItem.setCssStyles({
+                        backgroundColor: "transparent",
+                        color: "var(--text-muted)",
+                    });
                 }
             });
 

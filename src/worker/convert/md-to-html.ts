@@ -18,12 +18,18 @@ import { visitParents } from "unist-util-visit-parents";
 
 import { NOTE_META_PREFIX } from "./html-to-md";
 
-import type { Processor } from "unified";
+import type { CompileResults, Processor } from "unified";
 import type { Root as HRoot, RootContent } from "hast";
 import type { Root as MRoot } from "mdast";
+import type { Node } from "unist";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyProcessor = Processor<any, any, any, any, any>;
+type GenericProcessor = Processor<
+    Node | undefined,
+    Node | undefined,
+    Node | undefined,
+    Node | undefined,
+    CompileResults | undefined
+>;
 
 /* ================================================================ */
 /*  Options                                                         */
@@ -46,7 +52,7 @@ export interface ConvertOptions {
 
 function md2remark(
     str: string,
-    remarkParser: AnyProcessor,
+    remarkParser: GenericProcessor,
     strictLineBreaks = true,
 ): MRoot {
     // Restore annotated images: ![<img ...> | W](path/KEY.png) → <img ...>
@@ -95,7 +101,7 @@ function md2remark(
             `${prefix}<span data-zf-task="${state.toLowerCase() === "x" ? "x" : "open"}"></span>`,
     );
 
-    const tree = remarkParser.parse(str);
+    const tree = remarkParser.parse(str) as MRoot;
 
     // When strict line breaks is off (Obsidian default), convert soft line
     // breaks in text nodes to hard break nodes so they become <br> in HTML.
@@ -138,7 +144,7 @@ function md2remark(
 
 async function remark2rehype(
     remark: MRoot,
-    remark2rehypeProcessor: AnyProcessor,
+    remark2rehypeProcessor: GenericProcessor,
 ): Promise<HRoot> {
     const result = await remark2rehypeProcessor.run(remark as any);
     return result as HRoot;
@@ -148,7 +154,10 @@ async function remark2rehype(
 /*  rehype → HTML string (for Zotero note storage)                 */
 /* ================================================================ */
 
-function rehype2note(rehype: HRoot, rehypeStringifier: AnyProcessor): string {
+function rehype2note(
+    rehype: HRoot,
+    rehypeStringifier: GenericProcessor,
+): string {
     // Del node → span with strikethrough style (Zotero format)
     visit(
         rehype,
@@ -327,9 +336,9 @@ function rehype2note(rehype: HRoot, rehypeStringifier: AnyProcessor): string {
  */
 export async function md2htmlWithProcessors(
     md: string,
-    remarkParser: AnyProcessor,
-    remark2rehypeProcessor: AnyProcessor,
-    rehypeStringifier: AnyProcessor,
+    remarkParser: GenericProcessor,
+    remark2rehypeProcessor: GenericProcessor,
+    rehypeStringifier: GenericProcessor,
     options?: ConvertOptions,
 ): Promise<string> {
     // Extract wrapper-div metadata comment (if present).

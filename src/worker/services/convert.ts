@@ -10,10 +10,16 @@ import { html2mdWithProcessors } from "worker/convert/html-to-md";
 import { md2htmlWithProcessors } from "worker/convert/md-to-html";
 import { annoHtml2md, annoMd2html } from "worker/convert/annotation-comment";
 
-import type { Processor } from "unified";
+import type { CompileResults, Processor } from "unified";
+import type { Node } from "unist";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyProcessor = Processor<any, any, any, any, any>;
+type GenericProcessor = Processor<
+    Node | undefined,
+    Node | undefined,
+    Node | undefined,
+    Node | undefined,
+    CompileResults | undefined
+>;
 import type { Html2MdOptions } from "worker/convert/html-to-md";
 import type { ConvertOptions } from "worker/convert/md-to-html";
 
@@ -25,19 +31,19 @@ export class ConvertService {
     /* Frozen (reusable) processor instances */
 
     /** rehype parser — HTML string → hast. */
-    private readonly rehypeParser: AnyProcessor;
+    private readonly rehypeParser: GenericProcessor;
 
     /** remark stringifier base — hast→mdast output → MD string. */
-    private readonly remarkStringifier: AnyProcessor;
+    private readonly remarkStringifier: GenericProcessor;
 
     /** remark parser — MD string → mdast. */
-    private readonly remarkParser: AnyProcessor;
+    private readonly remarkParser: GenericProcessor;
 
     /** remark→rehype runner — mdast → hast. */
-    private readonly remark2rehypeProc: AnyProcessor;
+    private readonly remark2rehypeProc: GenericProcessor;
 
     /** rehype stringifier — hast → HTML string. */
-    private readonly rehypeStringifier: AnyProcessor;
+    private readonly rehypeStringifier: GenericProcessor;
 
     constructor() {
         this.rehypeParser = unified()

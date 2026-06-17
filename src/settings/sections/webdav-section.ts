@@ -53,7 +53,7 @@ export class WebDavSection {
                     text.setPlaceholder("https://...")
                         .setValue(tempUrl)
                         .onChange((v) => (tempUrl = v.trim()));
-                    text.inputEl.style.width = "100%";
+                    text.inputEl.setCssStyles({ width: "100%" });
                     if (isVerified) text.setDisabled(true);
                 });
         });

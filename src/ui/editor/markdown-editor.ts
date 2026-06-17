@@ -342,7 +342,7 @@ export class EmbeddableMarkdownEditor {
         // Add obsidian-app class to the editor container, apply obsidian styles
         container.classList.toggle("obsidian-app", true);
         // Unset some unnecessary obsidian styles
-        container.style.contain = "content";
+        container.setCssStyles({ contain: "content" });
 
         // Create the editor with the app instance
         this.editor = new EditorClass(app, container, {
@@ -400,7 +400,7 @@ export class EmbeddableMarkdownEditor {
         }
 
         // Set the font-size to 1em
-        this.editorEl.style.fontSize = "1em";
+        this.editorEl.setCssStyles({ fontSize: "1em" });
 
         // Set cursor position if specified
         if (options.cursorLocation && this.editor.editor?.cm) {

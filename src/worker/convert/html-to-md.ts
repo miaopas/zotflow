@@ -20,10 +20,16 @@ import { visitParents } from "unist-util-visit-parents";
 import { visit } from "unist-util-visit";
 import { h } from "hastscript";
 
-import type { Processor } from "unified";
+import type { CompileResults, Processor } from "unified";
+import type { Node } from "unist";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyProcessor = Processor<any, any, any, any, any>;
+type GenericProcessor = Processor<
+    Node | undefined,
+    Node | undefined,
+    Node | undefined,
+    Node | undefined,
+    CompileResults | undefined
+>;
 import type { Root as HRoot } from "hast";
 import type { Root as MRoot } from "mdast";
 import type { Handle } from "hast-util-to-mdast";
@@ -78,9 +84,9 @@ interface NoteParseResult {
 
 function parseNoteHtml(
     html: string,
-    rehypeParser: AnyProcessor,
+    rehypeParser: GenericProcessor,
 ): NoteParseResult {
-    const tree = rehypeParser.parse(html);
+    const tree = rehypeParser.parse(html) as HRoot;
 
     let wrapperAttrs: string | null = null;
 
@@ -599,7 +605,7 @@ function protectObsidianSyntax(tree: MRoot): void {
 
 function remarkToMarkdown(
     remark: MRoot,
-    remarkStringifier: AnyProcessor,
+    remarkStringifier: GenericProcessor,
 ): string {
     const tableHandler = (node: any) => {
         const ext = gfmTableToMarkdown();
@@ -667,8 +673,8 @@ export const NOTE_META_PREFIX = "ZF_NOTE_META";
  */
 export async function html2mdWithProcessors(
     html: string,
-    rehypeParser: AnyProcessor,
-    remarkStringifier: AnyProcessor,
+    rehypeParser: GenericProcessor,
+    remarkStringifier: GenericProcessor,
     options?: Html2MdOptions,
 ): Promise<string> {
     const { tree, wrapperAttrs } = parseNoteHtml(html, rehypeParser);

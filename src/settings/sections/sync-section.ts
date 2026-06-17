@@ -61,16 +61,16 @@ export class SyncSection {
                 });
 
             // Verify Button
-            setting.addButton(
-                (button) =>
-                    (button
-                        .setButtonText(keyInfo ? "Verified" : "Verify Key")
-                        .setCta()
-                        .setDisabled(!!keyInfo)
-                        .onClick(() =>
-                            this.handleVerifyOrRefresh(button, "verify"),
-                        ).buttonEl.style.width = "100px"),
-            );
+            setting.addButton((button) => {
+                button
+                    .setButtonText(keyInfo ? "Verified" : "Verify Key")
+                    .setCta()
+                    .setDisabled(!!keyInfo)
+                    .onClick(() =>
+                        this.handleVerifyOrRefresh(button, "verify"),
+                    );
+                button.buttonEl.setCssStyles({ width: "100px" });
+            });
 
             // Clear Button
             setting.addExtraButton((btn) => {
@@ -227,14 +227,12 @@ export class SyncSection {
         const btnContainer = containerEl.createDiv({
             cls: "zotflow-settings-table-btn-container",
         });
-        new Setting(btnContainer).addButton(
-            (btn) =>
-                (btn
-                    .setButtonText("Refresh Libraries")
-                    .onClick(() =>
-                        this.handleVerifyOrRefresh(btn, "refresh"),
-                    ).buttonEl.style.width = "120px"),
-        );
+        new Setting(btnContainer).addButton((btn) => {
+            btn.setButtonText("Refresh Libraries").onClick(() =>
+                this.handleVerifyOrRefresh(btn, "refresh"),
+            );
+            btn.buttonEl.setCssStyles({ width: "120px" });
+        });
     }
 
     private async handleVerifyOrRefresh(
