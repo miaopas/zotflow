@@ -32,7 +32,9 @@ export const ZotFlowActivityCenter: React.FC = () => {
                             <span className="nav-icon">
                                 <ObsidianIcon icon={tab.icon} />
                             </span>
-                            <span>{tab.label}</span>
+                            <span className="zotflow-ac-tab-label">
+                                {tab.label}
+                            </span>
                         </div>
                     );
                 })}

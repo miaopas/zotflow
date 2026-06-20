@@ -341,6 +341,7 @@
 }
 .zotflow-tree-view-header {
     display: flex;
+    flex-wrap: wrap;
     gap: 5px;
     padding: var(--size-4-3) var(--size-4-3);
     border-bottom: 1px solid var(--background-modifier-border);
@@ -493,6 +494,20 @@
 
 .callout[data-callout^="zotflow-ink"] {
     --callout-icon: zotero-ink;
+}
+
+/* ============================================================
+   Reader
+   ============================================================ */
+
+.zotflow-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: var(--size-4-4);
+    color: var(--text-muted);
+    text-align: center;
 }
 
 /* ============================================================
@@ -1872,6 +1887,106 @@
 .zotflow-template-test-actions {
     display: flex;
     justify-content: flex-end;
+}
+
+/* ============================================================
+   Activity Center: Responsive
+   Desktop (>=1025px) uses the default rules above.
+   ============================================================ */
+
+/* ---------- Tablet (601-1024px) ---------- */
+@media (min-width: 601px) and (max-width: 1024px) {
+    .zotflow-ac-tab {
+        padding: 10px 12px;
+    }
+
+    /* Narrow the conflict sidebar so the diff pane keeps room */
+    .zotflow-conflict-list {
+        width: 180px;
+    }
+}
+
+/* ---------- Phone (<=600px) ---------- */
+@media (max-width: 600px) {
+    /* Tabs become icon-only and share the width evenly */
+    .zotflow-ac-tab {
+        flex: 1 1 0;
+        justify-content: center;
+        gap: 0;
+        padding: var(--size-4-2) var(--size-2-2);
+    }
+
+    .zotflow-ac-tab-label {
+        display: none;
+    }
+
+    .zotflow-ac-content {
+        padding: var(--size-4-3) var(--size-2-1);
+    }
+
+    /* Sync: stack the conflict list above the diff pane */
+    .zotflow-conflict-container {
+        flex-direction: column;
+    }
+
+    .zotflow-conflict-list {
+        width: 100%;
+        max-height: 30vh;
+        border-bottom: 1px solid var(--background-modifier-border);
+    }
+
+    .zotflow-sync-lib-table-wrapper {
+        max-height: 40vh;
+        overflow-x: auto;
+    }
+
+    .zotflow-field-diff-table th:first-child {
+        width: 90px;
+    }
+
+    /* Tasks: relax the fixed 35/65 split on short screens */
+    .zotflow-tasks-section:first-child,
+    .zotflow-tasks-history-section {
+        min-height: 25%;
+    }
+
+    /* Template: stack the editor and output panels vertically */
+    .zotflow-template-test-panels {
+        flex-direction: column;
+    }
+
+    .zotflow-template-test-editor,
+    .zotflow-template-test-output {
+        min-height: 140px;
+    }
+
+    .zotflow-template-test-env {
+        flex-wrap: wrap;
+    }
+
+    .zotflow-multiselect {
+        min-width: 0;
+        flex: 1;
+    }
+
+    /* Repair: keep the table but scroll it instead of crushing columns */
+    .zotflow-repair-table-wrapper {
+        overflow-x: auto;
+    }
+
+    .zotflow-repair-table {
+        min-width: 640px;
+    }
+
+    /* Telemetry: let the toolbar wrap and the filter grow */
+    .zotflow-telemetry-toolbar {
+        flex-wrap: wrap;
+    }
+
+    .zotflow-telemetry-filter {
+        width: auto;
+        flex: 1 1 120px;
+    }
 }
 
 /* ============================================================
