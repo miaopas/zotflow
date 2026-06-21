@@ -12,7 +12,6 @@ import {
     TFile,
     TAbstractFile,
     WorkspaceLeaf,
-    normalizePath,
     type ObsidianProtocolData,
 } from "obsidian";
 
@@ -34,7 +33,7 @@ import { handleEditorDrop } from "ui/editor/citation-helper";
 
 import { openAttachment } from "utils/viewer";
 import { getLocalSidecarPath } from "utils/utils";
-import { checkFile, readTextFile } from "utils/file";
+import { checkFile, readTextFile, renameFile, deleteFile } from "utils/file";
 import { ActivityCenterModal } from "ui/activity-center/modal";
 import { ZoteroSearchModal } from "ui/modals/suggest";
 import { AttachmentSelectModal } from "ui/modals/attachment-suggest";
@@ -560,18 +559,14 @@ export default class ZotFlow extends Plugin {
         const newJsonPath = this.getSidecarPathFromFile(file);
         if (oldJsonPath === newJsonPath) return;
 
-        const jsonFile = this.app.vault.getAbstractFileByPath(
-            normalizePath(oldJsonPath),
-        );
-        if (jsonFile instanceof TFile) {
-            this.app.vault.rename(jsonFile, newJsonPath).catch((err) => {
-                services.logService.error(
-                    `Failed to rename sidecar ${oldJsonPath} → ${newJsonPath}`,
-                    "Main",
-                    err,
-                );
-            });
-        }
+        // renameFile handles both Vault-tracked and hidden (.dot folder) paths.
+        renameFile(this.app, oldJsonPath, newJsonPath).catch((err) => {
+            services.logService.error(
+                `Failed to rename sidecar ${oldJsonPath} → ${newJsonPath}`,
+                "Main",
+                err,
+            );
+        });
     }
 
     /**
@@ -584,18 +579,14 @@ export default class ZotFlow extends Plugin {
             return;
 
         const jsonPath = this.getSidecarPathFromFile(file);
-        const jsonFile = this.app.vault.getAbstractFileByPath(
-            normalizePath(jsonPath),
-        );
-        if (jsonFile instanceof TFile) {
-            this.app.vault.trash(jsonFile, true).catch((err) => {
-                services.logService.error(
-                    `Failed to delete sidecar ${jsonPath}`,
-                    "Main",
-                    err,
-                );
-            });
-        }
+        // deleteFile handles both Vault-tracked and hidden (.dot folder) paths.
+        deleteFile(this.app, jsonPath).catch((err) => {
+            services.logService.error(
+                `Failed to delete sidecar ${jsonPath}`,
+                "Main",
+                err,
+            );
+        });
     }
 
     /**
