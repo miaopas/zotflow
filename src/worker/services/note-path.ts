@@ -32,6 +32,7 @@ const IGNORE_KEYS: ReadonlySet<string> = new Set([
     "dateAdded",
     "dateModified",
     "accessDate",
+    "path",
     "itemPaths",
 ]);
 
