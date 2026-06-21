@@ -39,7 +39,7 @@ export class SyncTask extends BaseTask {
 
         this.reportProgress(0, 1, "Starting sync...");
 
-        const { successCount, failCount, changedItems } =
+        const { successCount, failCount, changedItems, syncedLibraryIDs } =
             await this.syncService.startSync(
                 signal,
                 (completed, total, message) => {
@@ -85,6 +85,23 @@ export class SyncTask extends BaseTask {
             } catch (e) {
                 // Never let post-sync chaining fail the sync task itself.
                 // (Logging is best-effort; the SyncService already logs sync issues.)
+                void e;
+            }
+        }
+
+        // Auto-purge source notes for items moved to the Zotero trash, if enabled.
+        if (
+            !signal.aborted &&
+            this.settings?.autoPurgeTrashedSourceNotes &&
+            this.libraryNoteService &&
+            syncedLibraryIDs.length > 0
+        ) {
+            try {
+                await this.libraryNoteService.purgeTrashedSourceNotes(
+                    syncedLibraryIDs,
+                );
+            } catch (e) {
+                // Best-effort: a purge failure must not fail the sync task.
                 void e;
             }
         }

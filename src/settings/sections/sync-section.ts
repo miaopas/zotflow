@@ -114,6 +114,26 @@ export class SyncSection {
                 });
         });
 
+        // Auto-purge source notes for trashed items
+        settingGroup.addSetting((setting) => {
+            setting
+                .setName("Auto-purge source notes for trashed items")
+                .setDesc(
+                    "When enabled, source notes for items moved to the Zotero trash are automatically removed (sent to the system trash) after each sync.",
+                )
+                .addToggle((toggle) => {
+                    toggle
+                        .setValue(
+                            this.plugin.settings.autoPurgeTrashedSourceNotes,
+                        )
+                        .onChange(async (value) => {
+                            this.plugin.settings.autoPurgeTrashedSourceNotes =
+                                value;
+                            await this.plugin.saveSettings();
+                        });
+                });
+        });
+
         // Libraries Table
         if (keyInfo) {
             settingGroup.addSetting(async (setting) => {

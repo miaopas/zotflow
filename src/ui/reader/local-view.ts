@@ -425,21 +425,20 @@ export class LocalReaderView extends ItemView {
         if (this.dataManager) {
             for (const id of ids) {
                 const annotation = this.dataManager.getAnnotation(id);
-                if (annotation) {
-                    const isVisual =
-                        annotation.type === "image" ||
-                        annotation.type === "ink";
-                    if (isVisual) {
-                        workerBridge.localNote
-                            .deleteAnnotationImage(id)
-                            .catch((e) =>
-                                services.logService.error(
-                                    "Failed to delete annotation image",
-                                    "LocalReaderView",
-                                    e,
-                                ),
-                            );
-                    }
+                const maybeVisual =
+                    !annotation ||
+                    annotation.type === "image" ||
+                    annotation.type === "ink";
+                if (maybeVisual) {
+                    workerBridge.localNote
+                        .deleteAnnotationImage(id)
+                        .catch((e) =>
+                            services.logService.error(
+                                "Failed to delete annotation image",
+                                "LocalReaderView",
+                                e,
+                            ),
+                        );
                 }
                 await this.dataManager.deleteAnnotation(id);
             }

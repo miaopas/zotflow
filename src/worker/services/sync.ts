@@ -42,9 +42,15 @@ export class SyncService {
         successCount: number;
         failCount: number;
         changedItems: ItemIdentifier[];
+        syncedLibraryIDs: number[];
     }> {
         if (signal?.aborted) {
-            return { successCount: 0, failCount: 0, changedItems: [] };
+            return {
+                successCount: 0,
+                failCount: 0,
+                changedItems: [],
+                syncedLibraryIDs: [],
+            };
         }
 
         if (!navigator.onLine) {
@@ -95,7 +101,12 @@ export class SyncService {
                 "No libraries configured for sync.",
                 "SyncService",
             );
-            return { successCount: 0, failCount: 0, changedItems: [] };
+            return {
+                successCount: 0,
+                failCount: 0,
+                changedItems: [],
+                syncedLibraryIDs: [],
+            };
         }
 
         // Build the active library list for progress reporting
@@ -113,7 +124,12 @@ export class SyncService {
                     `Library ${libraryId} is ignored or not found.`,
                     "SyncService",
                 );
-                return { successCount: 0, failCount: 0, changedItems: [] };
+                return {
+                    successCount: 0,
+                    failCount: 0,
+                    changedItems: [],
+                    syncedLibraryIDs: [],
+                };
             }
         } else {
             for (const libKey of libraries) {
@@ -219,7 +235,12 @@ export class SyncService {
                 );
             }
 
-            return { successCount, failCount, changedItems };
+            return {
+                successCount,
+                failCount,
+                changedItems,
+                syncedLibraryIDs: activeLibraries,
+            };
         } catch (error: any) {
             // Catastrophic failure (e.g., DB crash)
             this.parentHost.log("error", error.message, "SyncService", error);
@@ -647,6 +668,11 @@ export class SyncService {
     ) {
         if (keysToDelete.length === 0) return;
 
+        // Visual (image/ink) annotation keys whose rendered image files must be
+        // removed from disk. Collected inside the transaction, deleted after it
+        // commits — file I/O must never run inside a Dexie transaction.
+        const imageKeysToDelete: string[] = [];
+
         await db.transaction("rw", db.items, async () => {
             for (const targetKey of keysToDelete) {
                 const targetItem = await db.items.get([libraryID, targetKey]);
@@ -718,6 +744,21 @@ export class SyncService {
                     await db.items.bulkDelete(
                         keysToRemove.map((k) => [libraryID, k]),
                     );
+
+                    // Queue rendered images of any deleted image/ink
+                    // annotations for removal after the transaction commits.
+                    for (const member of family) {
+                        if (
+                            member.itemType === "annotation" &&
+                            ((member.raw as any)?.data?.annotationType ===
+                                "image" ||
+                                (member.raw as any)?.data?.annotationType ===
+                                    "ink")
+                        ) {
+                            imageKeysToDelete.push(member.key);
+                        }
+                    }
+
                     this.parentHost.log(
                         "debug",
                         `Deleted ${targetKey} and ${descendants.length} descendants.`,
@@ -726,6 +767,38 @@ export class SyncService {
                 }
             }
         });
+
+        // Remove orphaned annotation image files (outside the transaction).
+        for (const key of imageKeysToDelete) {
+            await this.deleteAnnotationImageFile(key);
+        }
+    }
+
+    /**
+     * Delete a rendered annotation image (`{folder}/{key}.png`) from the vault,
+     * if it exists. Best-effort — failures are logged, never thrown.
+     */
+    private async deleteAnnotationImageFile(annotationKey: string) {
+        const folder = this.settings.annotationImageFolder.replace(/\/$/, "");
+        const path = `${folder}/${annotationKey}.png`;
+        try {
+            const exists = await this.parentHost.checkFile(path);
+            if (exists.exists) {
+                await this.parentHost.deleteFile(path);
+                this.parentHost.log(
+                    "debug",
+                    `Deleted orphaned annotation image: ${path}`,
+                    "SyncService",
+                );
+            }
+        } catch (e) {
+            this.parentHost.log(
+                "warn",
+                `Failed to delete annotation image ${annotationKey}`,
+                "SyncService",
+                e,
+            );
+        }
     }
 
     private async getAllDescendants(

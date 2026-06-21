@@ -1,6 +1,7 @@
 import type { AnyIDBZoteroItem, IDBZoteroItem } from "types/db-schema";
 import { LibraryTemplateService } from "./library-template";
-import { db } from "db/db";
+import { db, getCombinations } from "db/db";
+import { Zotero_Item_Types } from "types/zotero-item-const";
 import type { ZotFlowSettings } from "settings/types";
 import type { AttachmentData } from "types/zotero-item";
 import { getAnnotationJson } from "db/annotation";
@@ -194,6 +195,76 @@ export class LibraryNoteService {
                 `Batch creation finished successfully.`,
             );
         }
+    }
+
+    /**
+     * Purge source notes whose Zotero items have been moved to the trash.
+     *
+     * Scans every trashed top-level item across the given libraries and, when
+     * a matching source note exists in the vault, sends it to the system trash.
+     * Idempotent — already-removed notes are skipped, so it is safe to run
+     * after every sync.
+     *
+     * @returns the number of source notes removed.
+     */
+    async purgeTrashedSourceNotes(libraryIDs: number[]): Promise<number> {
+        if (libraryIDs.length === 0) return 0;
+
+        const isValidTopLevel = (type: string) =>
+            !(["note", "annotation", "attachment"] as string[]).includes(type);
+        const validTopLevelTypeList = Zotero_Item_Types.filter((type) =>
+            isValidTopLevel(type),
+        );
+
+        const trashedItems = await db.items
+            .where(["libraryID", "itemType", "trashed"])
+            .anyOf(getCombinations([libraryIDs, validTopLevelTypeList, [1]]))
+            .filter((item: AnyIDBZoteroItem) => !item.parentItem)
+            .toArray();
+
+        if (trashedItems.length === 0) return 0;
+
+        let purged = 0;
+
+        for (const item of trashedItems) {
+            try {
+                const path = await this.parentHost.getFileByKey(item.key);
+                if (!path) continue;
+
+                // Defensive: only delete a file that is actually this item's
+                // source note (matching frontmatter key), never an unrelated file.
+                const fileCheck = await this.parentHost.checkFile(path);
+                if (
+                    fileCheck.exists &&
+                    fileCheck.frontmatter?.["zotero-key"] === item.key
+                ) {
+                    await this.parentHost.deleteFile(path);
+                    purged++;
+                    this.parentHost.log(
+                        "info",
+                        `Purged source note for trashed item ${item.key}: ${path}`,
+                        "LibraryNoteService",
+                    );
+                }
+            } catch (e) {
+                // Best-effort: a single failure must not abort the whole purge.
+                this.parentHost.log(
+                    "warn",
+                    `Failed to purge source note for trashed item ${item.key}`,
+                    "LibraryNoteService",
+                    e,
+                );
+            }
+        }
+
+        if (purged > 0) {
+            this.parentHost.notify(
+                "info",
+                `Removed ${purged} source note(s) for trashed items.`,
+            );
+        }
+
+        return purged;
     }
 
     /**

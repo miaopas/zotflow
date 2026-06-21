@@ -311,28 +311,29 @@ export class AnnotationService {
             "AnnotationService",
         );
 
+        // Remove rendered images.
+        const foundKeys = new Set(items.map((i) => i.key));
+        const deleteImage = (key: string) =>
+            this.noteService.deleteAnnotationImage(key).catch((e) => {
+                this.parentHost.log(
+                    "error",
+                    `Failed to delete annotation image for ${key}`,
+                    "AnnotationService",
+                    e,
+                );
+            });
+
         for (const existing of items) {
             const isVisual =
                 existing.raw.data.annotationType === "image" ||
                 existing.raw.data.annotationType === "ink";
+            if (isVisual) void deleteImage(existing.key);
+        }
+        for (const id of ids) {
+            if (!foundKeys.has(id)) void deleteImage(id);
+        }
 
-            if (isVisual) {
-                this.noteService
-                    .deleteAnnotationImage(existing.key)
-                    .catch((e) => {
-                        this.parentHost.log(
-                            "error",
-                            `Failed to delete annotation image for ${existing.key}`,
-                            "AnnotationService",
-                            e,
-                        );
-                        this.parentHost.notify(
-                            "error",
-                            `Failed to delete annotation image for ${existing.key}`,
-                        );
-                    });
-            }
-
+        for (const existing of items) {
             if (existing.syncStatus === "created") {
                 itemsToDeletePhysical.push([libraryID, existing.key]);
             } else {
