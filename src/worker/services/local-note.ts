@@ -29,6 +29,12 @@ export class LocalNoteService {
         this.notePathService.updateSettings(settings);
     }
 
+    private normalizeTemplatePath(path: string): string {
+        const trimmed = path.trim();
+        if (!trimmed) return trimmed;
+        return /\.md$/i.test(trimmed) ? trimmed : `${trimmed}.md`;
+    }
+
     /**
      * Clear all pending debounced operations.
      */
@@ -364,7 +370,9 @@ export class LocalNoteService {
 
         // Render and Write
         const templateContent = await this.parentHost.readTextFile(
-            this.settings.localSourceNoteTemplatePath,
+            this.normalizeTemplatePath(
+                this.settings.localSourceNoteTemplatePath,
+            ),
         );
 
         const content = await this.templateService.renderLocalNote(
@@ -390,7 +398,9 @@ export class LocalNoteService {
         fileCheck: any, // Ideally typed as { exists: boolean, path: string, frontmatter: any }
     ) {
         const templateContent = await this.parentHost.readTextFile(
-            this.settings.localSourceNoteTemplatePath,
+            this.normalizeTemplatePath(
+                this.settings.localSourceNoteTemplatePath,
+            ),
         );
         const content = await this.templateService.renderLocalNote(
             localAttachment,

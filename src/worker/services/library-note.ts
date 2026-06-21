@@ -40,6 +40,12 @@ export class LibraryNoteService {
         this.notePathService.updateSettings(newSettings);
     }
 
+    private normalizeTemplatePath(path: string): string {
+        const trimmed = path.trim();
+        if (!trimmed) return trimmed;
+        return /\.md$/i.test(trimmed) ? trimmed : `${trimmed}.md`;
+    }
+
     /**
      * Clear all pending debounced operations.
      */
@@ -382,7 +388,9 @@ export class LibraryNoteService {
 
         // Then write content
         const templateContent = await this.parentHost.readTextFile(
-            this.settings.librarySourceNoteTemplatePath,
+            this.normalizeTemplatePath(
+                this.settings.librarySourceNoteTemplatePath,
+            ),
         );
 
         // Render Item may throw ZotFlowError (Template Error), let it bubble
@@ -412,7 +420,9 @@ export class LibraryNoteService {
         // Only update if versions are different, or if forced update is specified
         if (forceUpdate || currentVersion !== newVersion) {
             const templateContent = await this.parentHost.readTextFile(
-                this.settings.librarySourceNoteTemplatePath,
+                this.normalizeTemplatePath(
+                    this.settings.librarySourceNoteTemplatePath,
+                ),
             );
 
             const content = await this.templateService.renderLibrarySourceNote(
