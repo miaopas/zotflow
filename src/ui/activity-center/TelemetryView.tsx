@@ -134,12 +134,7 @@ export const TelemetryView: React.FC = () => {
     });
 
     const handleCopy = useCallback(() => {
-        const text = filteredLogs
-            .map(
-                (e) =>
-                    `[${formatTimestamp(e.timestamp)}] [${e.level.toUpperCase()}]${e.context ? ` [${e.context}]` : ""} ${e.message}`,
-            )
-            .join("\n");
+        const text = filteredLogs.map((e) => formatEntryText(e)).join("\n");
         navigator.clipboard.writeText(text);
         services.notificationService.notify(
             "success",

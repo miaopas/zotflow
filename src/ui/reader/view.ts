@@ -86,6 +86,25 @@ export class ZoteroReaderView extends ItemView {
         return "book-open";
     }
 
+    /**
+     * Use Obsidian-like link handling: absolute URLs open externally,
+     * while vault-style links are resolved through the workspace.
+     */
+    private handleOpenLink(url: string) {
+        const href = url.trim();
+        if (!href) return;
+
+        // URL with a scheme (https:, file:, mailto:, obsidian:, zotero:, etc.)
+        // should be delegated to the host OS/browser.
+        if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+            window.open(href, "_blank", "noopener,noreferrer");
+            return;
+        }
+
+        // Treat scheme-less links as Obsidian/vault links.
+        void this.app.workspace.openLinkText(href, "", true);
+    }
+
     async setState(
         state: ReaderViewState,
         result: ViewStateResult,
@@ -202,7 +221,7 @@ export class ZoteroReaderView extends ItemView {
                 });
 
                 this.bridge.onEventType("openLink", (evt) => {
-                    console.log("Opening link:", evt.url);
+                    this.handleOpenLink(evt.url);
                 });
 
                 this.bridge.onEventType("annotationsSaved", (evt) => {
