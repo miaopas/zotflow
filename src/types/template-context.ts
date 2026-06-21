@@ -25,6 +25,7 @@ export interface ItemTemplateContext {
         name?: string;
     }>;
     date: string | null;
+    year: string;
     dateAdded: string;
     dateModified: string;
 

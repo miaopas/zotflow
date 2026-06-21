@@ -4,6 +4,7 @@ import type { AnyIDBZoteroItem } from "types/db-schema";
 import type { TFileWithoutParentAndVault } from "types/zotflow";
 import { db } from "db/db";
 import { ZotFlowError, ZotFlowErrorCode } from "utils/error";
+import { extractYear } from "utils/date";
 import type { DbHelperService } from "./db-helper";
 
 const FALLBACK_ZOTERO_TEMPLATE =
@@ -165,10 +166,7 @@ export class NotePathService {
 
             // Derived
             libraryName,
-            year:
-                typeof data.date === "string"
-                    ? (data.date as string).slice(0, 4)
-                    : "",
+            year: extractYear(data.date),
         };
 
         const rendered = await this.engine.parseAndRender(

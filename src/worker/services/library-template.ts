@@ -23,6 +23,7 @@ import type { ConvertService } from "./convert";
 import type { Html2MdOptions } from "worker/convert";
 import type { NotePathService } from "./note-path";
 import type { CitationTemplateInput } from "services/citation-service";
+import { extractYear } from "utils/date";
 
 const DEFAULT_ITEM_TEMPLATE = `---
 citationKey: {{ item.citationKey | json }}
@@ -31,7 +32,7 @@ itemType: {{ item.itemType | json }}
 creators: [{% for c in item.creators %}"{{ c.name }}"{% unless forloop.last %}, {% endunless %}{% endfor %}]
 publication: {{ item.publicationTitle | default: item.publisher | json }}
 date: {{ item.date | json }}
-year: {{ item.date | slice: 0, 4 }}
+year: {{ item.year }}
 url: {{ item.url | json }}
 doi: {{ item.DOI | json }}
 ---
@@ -50,6 +51,7 @@ doi: {{ item.DOI | json }}
 {%- endfor -%}
 
 {%- endif -%}
+## Notes
 {%- if item.notes.length > 0 -%}
 {%- for note in item.notes -%}
 {{ note.note | html2md | wrap_editable: "NOTE", note.key }}
@@ -78,7 +80,7 @@ doi: {{ item.DOI | json }}
 {%- endif -%}
 {%- if item.attachments.length == 0 and item.itemType == "attachment" and item.annotations.length > 0 -%}
 ## Annotations
-{%- for annotation in attachment.annotations -%}
+{%- for annotation in item.annotations -%}
 > [!zotflow-{{ annotation.type }}-{{ annotation.color }}] [{{ item.title }}, p.{{ annotation.pageLabel }}](obsidian://zotflow?type=open-attachment&libraryID={{ item.libraryID }}&key={{ item.key }}&navigation={{ annotation.key | process_nav_info}})
 {%- if annotation.type == "ink" or annotation.type == "image"-%}
 > > ![[{{settings.annotationImageFolder}}/{{ annotation.key }}.png]]
@@ -94,8 +96,8 @@ doi: {{ item.DOI | json }}
 `;
 
 const FALLBACK_WIKILINK_TEMPLATE = `{%- if annotations.size > 0 -%}{%- for annotation in annotations -%}
-[[{{ notePath }}#^{{ annotation.key }}|{{ item.creators[0].name | default: "Unknown" }} ({{ item.date | slice: 0, 4 }}), p. {{ annotation.pageLabel }}]]{% if forloop.last == false %}, {% endif %}{%- endfor -%}{%- else -%}
-[[{{ notePath }}|{{ item.creators[0].name | default: "Unknown" }} ({{ item.date | slice: 0, 4 }})]] {%- endif -%}`;
+[[{{ notePath }}#^{{ annotation.key }}|{{ item.creators[0].name | default: "Unknown" }} ({{ item.year }}), p. {{ annotation.pageLabel }}]]{% if forloop.last == false %}, {% endif %}{%- endfor -%}{%- else -%}
+[[{{ notePath }}|{{ item.creators[0].name | default: "Unknown" }} ({{ item.year }})]] {%- endif -%}`;
 
 const FALLBACK_PANDOC_TEMPLATE =
     "[@{{ item.citationKey | default: item.key }}{% if annotations.size > 0 %}{% assign pages = annotations | map: 'pageLabel' | compact | uniq | join: ', ' %}{% if pages != empty %}, pp. {{ pages }}{% endif %}{% endif %}]";
@@ -106,7 +108,7 @@ const FALLBACK_FOOTNOTE_REF_TEMPLATE =
 const FALLBACK_FOOTNOTE_TEMPLATE = `{%- if item.creators.length > 1 -%}
 {{ item.creators[0].name }} et al. {%- elsif item.creators.length == 1 -%}
  {{ item.creators[0].name }} {%- else -%}
-Unknown Author {%- endif -%}, *{{ item.title }}* ({{ item.date | slice: 0, 4 }}).`;
+Unknown Author {%- endif -%}, *{{ item.title }}* ({{ item.year }}).`;
 
 // Matches http(s)://zotero.org/{users|groups}/<id>/items/<KEY>
 const ZOTERO_URI_RE =
@@ -528,6 +530,7 @@ export class LibraryTemplateService {
             title: item.title || "",
             creators: creatorsObj,
             date: (data as any).date || null,
+            year: extractYear((data as any).date),
             dateAdded: item.dateAdded,
             dateModified: item.dateModified,
             accessDate: (data as any).accessDate || null,
