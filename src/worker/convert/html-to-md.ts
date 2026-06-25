@@ -165,7 +165,56 @@ function parseNoteHtml(
         },
     );
 
+    // 5. Heal double-encoded numeric character references.
+    //    Zotero's note serializer emits single character references for
+    //    spaces/letters at inline-mark boundaries (e.g. `&#x20;`). A prior
+    //    round-trip can double-encode them (`&amp;#x20;`), which rehype-parse
+    //    decodes one level into the *literal* text `&#x20;`. Left as-is, that
+    //    text would be re-escaped back to a broken reference and surface in
+    //    Zotero as a visible `&#x20;`. Decode any literal numeric reference in
+    //    text nodes back to its character so the note self-heals. Skipped
+    //    inside <code>/<pre> where such text may be intentional.
+    visitParents(
+        tree,
+        (n: any) => n.type === "text",
+        (n: any, ancestors) => {
+            for (const a of ancestors) {
+                if (
+                    a.type === "element" &&
+                    (a.tagName === "code" || a.tagName === "pre")
+                ) {
+                    return;
+                }
+            }
+            n.value = decodeNumericCharRefs(n.value);
+        },
+    );
+
     return { tree, wrapperAttrs };
+}
+
+/**
+ * Decode literal numeric HTML character references (`&#x20;`, `&#32;`) found
+ * inside a text node back to the characters they represent. Named references
+ * (e.g. `&amp;`) are intentionally left untouched so that genuine ampersand
+ * text such as "Tom & Jerry" round-trips unchanged.
+ */
+function decodeNumericCharRefs(value: string): string {
+    if (value.indexOf("&#") === -1) return value;
+    return value.replace(
+        /&#x([0-9a-fA-F]+);|&#(\d+);/g,
+        (match, hex: string | undefined, dec: string | undefined) => {
+            const code = hex != null ? parseInt(hex, 16) : parseInt(dec!, 10);
+            if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) {
+                return match;
+            }
+            try {
+                return String.fromCodePoint(code);
+            } catch {
+                return match;
+            }
+        },
+    );
 }
 
 /* ================================================================ */
