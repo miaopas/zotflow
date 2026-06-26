@@ -66,6 +66,7 @@ export interface ZotFlowSettings {
     linkedAttachmentBaseDir: string;
     defaultEditableRegionLocked: boolean;
     hideEditableRegionMarkers: boolean;
+    alwaysOpenChildNoteInEditor: boolean;
     defaultCitationFormat: CitationFormat;
     citationTrigger: string;
     citationPandocTemplate: string;
@@ -127,6 +128,7 @@ export const DEFAULT_SETTINGS: ZotFlowSettings = {
     linkedAttachmentBaseDir: "",
     defaultEditableRegionLocked: true,
     hideEditableRegionMarkers: false,
+    alwaysOpenChildNoteInEditor: false,
     defaultCitationFormat: "footnote",
     citationTrigger: "@@",
     citationPandocTemplate: "",

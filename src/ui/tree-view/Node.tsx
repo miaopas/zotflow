@@ -6,7 +6,12 @@ import { getAttachmentFileIcon, getItemTypeIcon } from "ui/icons";
 import { services } from "services/services";
 import { workerBridge } from "bridge";
 
-import { openAttachment, openItemNote } from "utils/viewer";
+import {
+    openAttachment,
+    openItemNote,
+    openItemNoteInEditor,
+    openItemNoteInSourceNote,
+} from "utils/viewer";
 import {
     ZOTFLOW_CITATION_MIME,
     type ZotFlowCitationPayload,
@@ -293,6 +298,11 @@ export const NodeItem = ({
                                         node.data.libraryID,
                                         node.data.key,
                                     );
+                                await workerBridge.libraryNote.triggerUpdate(
+                                    node.data.libraryID,
+                                    node.data.key,
+                                    { forceUpdateContent: true },
+                                );
                                 await openItemNote(
                                     node.data.libraryID,
                                     noteKey,
@@ -314,15 +324,83 @@ export const NodeItem = ({
             }
         } else if (nodeType === "item" && node.data.itemType === "note") {
             menu.addItem((item) => {
+                item.setTitle("Locate in Source Note")
+                    .setIcon("file-badge")
+                    .onClick(async () => {
+                        try {
+                            const located = await openItemNoteInSourceNote(
+                                node.data.libraryID,
+                                node.data.key,
+                                services.app,
+                            );
+                            if (!located) {
+                                services.notificationService.notify(
+                                    "warning",
+                                    "No source note found for this note.",
+                                );
+                            }
+                        } catch (err) {
+                            services.logService.error(
+                                "Failed to locate note in source note",
+                                "TreeView",
+                                err,
+                            );
+                            services.notificationService.notify(
+                                "error",
+                                "Failed to locate note in source note.",
+                            );
+                        }
+                    });
+            });
+            menu.addItem((item) => {
+                item.setTitle("Open in Note Editor (Experimental)")
+                    .setIcon("pencil")
+                    .onClick(async () => {
+                        try {
+                            await openItemNoteInEditor(
+                                node.data.libraryID,
+                                node.data.key,
+                                services.app,
+                            );
+                        } catch (err) {
+                            services.logService.error(
+                                "Failed to open note in Note Editor",
+                                "TreeView",
+                                err,
+                            );
+                            services.notificationService.notify(
+                                "error",
+                                "Failed to open note in Note Editor.",
+                            );
+                        }
+                    });
+            });
+            menu.addItem((item) => {
                 item.setTitle("Delete note")
                     .setIcon("trash-2")
                     .onClick(async () => {
                         try {
+                            // Capture the parent before deletion so we can
+                            // re-render its source note afterwards.
+                            const note = await workerBridge.dbHelper.getItem(
+                                node.data.libraryID,
+                                node.data.key,
+                            );
+                            const parentKey = note?.parentItem;
                             await workerBridge.itemNote.deleteNote(
                                 node.data.libraryID,
                                 node.data.key,
                             );
                             services.taskMonitor.treeChanged.emit();
+                            // Re-render the parent source note so the deleted
+                            // note's editable region is removed.
+                            if (parentKey) {
+                                await workerBridge.libraryNote.triggerUpdate(
+                                    node.data.libraryID,
+                                    parentKey,
+                                    { forceUpdateContent: true },
+                                );
+                            }
                             services.notificationService.notify(
                                 "success",
                                 "Note deleted.",

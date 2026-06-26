@@ -94,6 +94,24 @@ export class GeneralSection {
                 });
         });
 
+        zoteroSourceNote.addSetting((setting) => {
+            setting
+                .setName("Always Open Child Notes in Note Editor")
+                .setDesc(
+                    "When enabled, child notes always open in the standalone Note Editor view (experimental). When disabled (default), child notes open in their parent's source note, scrolled to the note's editable region.",
+                )
+                .addToggle((toggle) => {
+                    toggle.setValue(
+                        this.plugin.settings.alwaysOpenChildNoteInEditor,
+                    );
+                    toggle.onChange(async (value) => {
+                        this.plugin.settings.alwaysOpenChildNoteInEditor =
+                            value;
+                        await this.plugin.saveSettings();
+                    });
+                });
+        });
+
         const localSourceNote = new SettingGroup(containerEl);
         localSourceNote.setHeading("Local Source Note");
 
