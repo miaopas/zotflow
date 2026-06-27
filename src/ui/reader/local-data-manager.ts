@@ -102,6 +102,29 @@ export class LocalDataManager {
         return this.annotationCache.get(id);
     }
 
+    /** Get all unique tag names used across this attachment's annotations. */
+    getAllTagNames(): string[] {
+        const names = new Set<string>();
+        for (const anno of this.annotationCache.values()) {
+            for (const tag of anno.tags ?? []) {
+                if (tag.name) names.add(tag.name);
+            }
+        }
+
+        // For local tag suggestions, we add the Obsidian-native tags as well
+        const obsidianTags = services.app.metadataCache.getTags();
+        console.log("Obsidian tags:", obsidianTags);
+        for (const tag of Object.keys(obsidianTags)) {
+            const tagName = tag.replace(/^#/, "").trim();
+            if (!tagName) continue;
+            names.add(tagName);
+        }
+
+        return Array.from(names).sort((a, b) =>
+            a.localeCompare(b, undefined, { sensitivity: "accent" }),
+        );
+    }
+
     /** Save/update an annotation and persist to .zf.json. */
     async saveAnnotation(annotation: AnnotationJSON) {
         this.annotationCache.set(annotation.id, annotation);

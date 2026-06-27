@@ -471,7 +471,23 @@ export class AnnotationService {
             existing.annotationSortIndex !==
                 annotationData.annotationSortIndex ||
             existing.annotationText !== annotationData.annotationText ||
-            existing.annotationType !== annotationData.annotationType
+            existing.annotationType !== annotationData.annotationType ||
+            this.tagsSignature(existing.tags) !==
+                this.tagsSignature(annotationData.tags)
+        );
+    }
+
+    /**
+     * Build an order-independent signature of a tag list so two lists with the
+     * same tags in a different order compare equal.
+     */
+    private tagsSignature(
+        tags?: Array<{ tag: string; type?: number }>,
+    ): string {
+        return JSON.stringify(
+            (tags ?? [])
+                .map((t) => ({ tag: t.tag, type: t.type ?? 0 }))
+                .sort((a, b) => a.tag.localeCompare(b.tag)),
         );
     }
 }

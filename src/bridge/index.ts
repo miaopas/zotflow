@@ -23,6 +23,7 @@ import type { AnnotationService } from "worker/services/annotation";
 import type { KeyService } from "worker/services/key";
 import type { LibraryService } from "worker/services/library";
 import type { DbHelperService } from "worker/services/db-helper";
+import type { TagService } from "worker/services/tag";
 import type { PDFProcessWorker } from "worker/services/pdf-processor";
 import type { LibraryTemplateService } from "worker/services/library-template";
 import type { LocalTemplateService } from "worker/services/local-template";
@@ -61,6 +62,7 @@ export class WorkerBridge {
     private _key: KeyService;
     private _library: LibraryService;
     private _dbHelper: DbHelperService;
+    private _tag: TagService;
     private _pdfProcessor: PDFProcessWorker;
     private _libraryTemplate: LibraryTemplateService;
     private _localTemplate: LocalTemplateService;
@@ -101,6 +103,7 @@ export class WorkerBridge {
         this._key = await this._api.key;
         this._library = await this._api.library;
         this._dbHelper = await this._api.dbHelper;
+        this._tag = await this._api.tag;
         this._pdfProcessor = await this._api.pdfProcessor;
         this._libraryTemplate = await this._api.libraryTemplate;
         this._localTemplate = await this._api.localTemplate;
@@ -188,6 +191,11 @@ export class WorkerBridge {
     get dbHelper() {
         this.assertInitialized();
         return this._dbHelper;
+    }
+
+    get tag() {
+        this.assertInitialized();
+        return this._tag;
     }
 
     get pdfProcessWorker() {

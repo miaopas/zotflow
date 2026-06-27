@@ -29,6 +29,10 @@ zotflow-local-attachment: [[{{ path }}]]
 >
 > {{ annotation.comment | replace: newline, quote_string }}
 {%- endif -%}
+{%- if annotation.tags and annotation.tags.length > 0 -%}
+>
+> {% for t in annotation.tags %}#{{ t.tag | replace: " ", "\_" }}{% unless forloop.last %} {% endunless %}{% endfor %}
+{%- endif -%}
 ^{{ annotation.key }}
 
 {%- endfor -%}

@@ -14,6 +14,7 @@ import { AnnotationService } from "./services/annotation";
 import { KeyService } from "./services/key";
 import { LibraryService } from "./services/library";
 import { DbHelperService } from "./services/db-helper";
+import { TagService } from "./services/tag";
 import { NotePathService } from "./services/note-path";
 import { ConvertService } from "./services/convert";
 import { ItemNoteService } from "./services/item-note";
@@ -34,6 +35,7 @@ import type { AnnotationJSON } from "types/zotero-reader";
 import type { SaveAnnotationsResult } from "./services/annotation";
 import type { LibraryRow } from "./services/key";
 import type { DbHelperService as DbHelperServiceType } from "./services/db-helper";
+import type { TagService as TagServiceType } from "./services/tag";
 
 /**
  * Worker API definition
@@ -59,6 +61,7 @@ export interface WorkerAPI {
     key: KeyService;
     library: LibraryService;
     dbHelper: DbHelperServiceType;
+    tag: TagServiceType;
     pdfProcessor: PDFProcessWorker;
     libraryTemplate: LibraryTemplateService;
     localTemplate: LocalTemplateService;
@@ -101,6 +104,7 @@ let _annotation: AnnotationService | undefined;
 let _key: KeyService | undefined;
 let _library: LibraryService | undefined;
 let _dbHelper: DbHelperService | undefined;
+let _tag: TagService | undefined;
 let _notePath: NotePathService | undefined;
 let _convert: ConvertService | undefined;
 let _pdfProcessor: PDFProcessWorker | undefined;
@@ -125,6 +129,7 @@ function assertInitialized() {
         !_key ||
         !_library ||
         !_dbHelper ||
+        !_tag ||
         !_notePath ||
         !_convert ||
         !_taskManager ||
@@ -184,6 +189,7 @@ const exposedApi: WorkerAPI = {
             _zotero = new ZoteroAPIService(settings.zoteroapikey);
             _library = new LibraryService(settings, parentHost);
             _dbHelper = new DbHelperService(settings, parentHost, _library);
+            _tag = new TagService(settings, parentHost);
             _webdav = new WebDavService(settings, parentHost);
             _attachment = new AttachmentService(
                 _webdav,
@@ -391,6 +397,16 @@ const exposedApi: WorkerAPI = {
         return Comlink.proxy(_dbHelper);
     },
 
+    get tag() {
+        if (!_tag)
+            throw new ZotFlowError(
+                ZotFlowErrorCode.UNKNOWN,
+                "Worker",
+                "Worker not initialized",
+            );
+        return Comlink.proxy(_tag);
+    },
+
     get pdfProcessor() {
         if (!_pdfProcessor)
             throw new ZotFlowError(
@@ -525,6 +541,7 @@ const exposedApi: WorkerAPI = {
         _localTemplate!.updateSettings(settings);
         _notePath!.updateSettings(settings);
         _dbHelper!.updateSettings(settings);
+        _tag!.updateSettings(settings);
         _pdfProcessor!.updateSettings(settings);
         _currentSettings = settings;
     },

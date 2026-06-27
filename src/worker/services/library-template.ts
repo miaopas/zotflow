@@ -35,6 +35,7 @@ date: {{ item.date | json }}
 year: {{ item.year }}
 url: {{ item.url | json }}
 doi: {{ item.DOI | json }}
+tags: [{% for t in item.tags %}"#{{ t.tag | replace: " ", "\_" }}"{% unless forloop.last %}, {% endunless %}{% endfor %}]
 ---
 {%- capture quote_string %}{{ newline }}> {% endcapture -%}
 {%- capture quote_string_2 %}{{ newline }}> >{% endcapture -%}
@@ -72,6 +73,7 @@ doi: {{ item.DOI | json }}
 {%- endif -%}
 >
 > {{ annotation.comment | wrap_editable: "ANNO", annotation.key | replace: newline, quote_string }}
+> {% if annotation.tags and annotation.tags.length > 0 -%} {% for t in annotation.tags %}#{{ t.tag | replace: " ", "\_" }}{% unless forloop.last %} {% endunless %}{% endfor %} {%- endif %}
 ^{{ annotation.key }}
 
 {%- endfor -%}
@@ -89,6 +91,7 @@ doi: {{ item.DOI | json }}
 {%- endif -%}
 >
 > {{ annotation.comment | wrap_editable: "ANNO", annotation.key | replace: newline, quote_string }}
+> {% if annotation.tags and annotation.tags.length > 0 -%} {% for t in annotation.tags %}#{{ t.tag | replace: " ", "\_" }}{% unless forloop.last %} {% endunless %}{% endfor %} {%- endif %}
 ^{{ annotation.key }}
 
 {%- endfor -%}

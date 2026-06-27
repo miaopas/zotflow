@@ -5,6 +5,7 @@ import { LocalDataManager } from "./local-data-manager";
 import { copyAnnotationOnCreate } from "./auto-copy";
 import { getLinkedLocalSourceNote } from "utils/file";
 import { openSourceNote } from "utils/viewer";
+import { TagEditModal } from "ui/modals/tag-edit";
 
 import type {
     CreateReaderOptions,
@@ -12,6 +13,7 @@ import type {
     AnnotationJSON,
     CustomReaderTheme,
 } from "types/zotero-reader";
+import type { TagInput } from "worker/services/tag";
 import { services } from "services/services";
 
 /** View type identifier for the local vault file reader view. */
@@ -185,6 +187,10 @@ export class LocalReaderView extends ItemView {
 
                 this.bridge.onEventType("annotationsDeleted", async (evt) => {
                     await this.handleAnnotationsDeleted(evt.ids);
+                });
+
+                this.bridge.onEventType("openTagsPopup", (evt) => {
+                    void this.handleOpenTagsPopup(evt.annotationID);
                 });
 
                 this.bridge.onEventType("viewStateChanged", (evt) => {
@@ -443,5 +449,69 @@ export class LocalReaderView extends ItemView {
                 await this.dataManager.deleteAnnotation(id);
             }
         }
+    }
+
+    /**
+     * Open the tag editor for a single local annotation when the reader
+     * requests it. Tags are persisted into the `.zf.json` sidecar (via
+     * `LocalDataManager`), then pushed back to the reader iframe.
+     */
+    private async handleOpenTagsPopup(annotationID: unknown) {
+        if (!this.dataManager) return;
+
+        const id = String(annotationID);
+        const annotation = this.dataManager.getAnnotation(id);
+        if (!annotation) {
+            services.notificationService.notify(
+                "warning",
+                "Annotation not found.",
+            );
+            return;
+        }
+
+        const initialTags: TagInput[] = (annotation.tags ?? []).map((t) => ({
+            tag: t.name,
+        }));
+        const suggestions = this.dataManager.getAllTagNames();
+
+        new TagEditModal(this.app, {
+            itemTitle: this.describeAnnotation(annotation),
+            initialTags,
+            suggestions,
+            onSave: async (tags) => {
+                annotation.tags = tags.map((t) => ({ name: t.tag }));
+                try {
+                    // Persist to the sidecar (also triggers a note re-render).
+                    await this.dataManager!.saveAnnotation(annotation);
+
+                    // Push updated tags back into the reader iframe.
+                    await this.bridge?.refreshAnnotations(
+                        this.dataManager!.getAllAnnotations(),
+                    );
+                } catch (e) {
+                    services.logService.error(
+                        "Failed to save annotation tags",
+                        "LocalReaderView",
+                        e,
+                    );
+                    services.notificationService.notify(
+                        "error",
+                        "Failed to save tags.",
+                    );
+                }
+            },
+        }).open();
+    }
+
+    /**
+     * Build a short, human-readable label for an annotation to show as the
+     * tag-editor subtitle (e.g. `Highlight: "some text"`).
+     */
+    private describeAnnotation(anno: AnnotationJSON): string {
+        const label = anno.type.charAt(0).toUpperCase() + anno.type.slice(1);
+        const text = (anno.text || anno.comment || "").trim();
+        if (!text) return label;
+        const truncated = text.length > 80 ? text.slice(0, 80) + "…" : text;
+        return `${label}: ${truncated}`;
     }
 }

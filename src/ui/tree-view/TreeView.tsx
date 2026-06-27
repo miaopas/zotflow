@@ -36,6 +36,7 @@ export type ViewNode = {
     dateAdded?: string;
     dateModified?: string;
     syncStatus?: string;
+    tags?: string[];
 };
 
 function rebuildTreeFromWorker(payload: TreeTransferPayload): ViewNode[] {
@@ -74,6 +75,7 @@ function rebuildTreeFromWorker(payload: TreeTransferPayload): ViewNode[] {
             dateAdded: entity.dateAdded,
             dateModified: entity.dateModified,
             syncStatus: entity.syncStatus,
+            tags: entity.tags,
 
             // Initialize Children
             children: [],

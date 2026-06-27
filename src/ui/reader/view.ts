@@ -6,9 +6,10 @@ import { copyAnnotationOnCreate } from "./auto-copy";
 import { services } from "services/services";
 import { ViewStateService } from "services/view-state-service";
 import { openSourceNote } from "utils/viewer";
+import { TagEditModal } from "ui/modals/tag-edit";
 
 import type { ViewStateResult } from "obsidian";
-import type { AttachmentData } from "types/zotero-item";
+import type { AttachmentData, AnnotationData } from "types/zotero-item";
 import type { IDBZoteroItem, IDBZoteroKey } from "types/db-schema";
 import type {
     AnnotationJSON,
@@ -248,6 +249,13 @@ export class ZoteroReaderView extends ItemView {
 
                 this.bridge.onEventType("setDarkTheme", (evt) => {
                     this.handleSetTheme("dark", evt.theme);
+                });
+
+                //     onOpenTagsPopup: (annotationID, left, top) => {
+                // 	this.emit({ type: "openTagsPopup", annotationID, left, top });
+                // },
+                this.bridge.onEventType("openTagsPopup", (evt) => {
+                    void this.handleOpenTagsPopup(evt.annotationID);
                 });
 
                 // Observe color scheme changes via Obsidian's css-change event
@@ -721,5 +729,102 @@ export class ZoteroReaderView extends ItemView {
                 "Failed to delete annotations",
             );
         }
+    }
+
+    /**
+     * Open the tag editor for a single annotation when the reader requests it.
+     * Tags are persisted via the shared `TagService.setItemTags` (annotations
+     * are regular items in IDB), then pushed back to the reader and the owning
+     * source note is re-rendered when one exists.
+     */
+    private async handleOpenTagsPopup(annotationID: unknown) {
+        if (!this.attachmentItem) return;
+
+        const annotationKey = String(annotationID);
+        const libraryID = this.attachmentItem.libraryID;
+
+        try {
+            const annoItem = await workerBridge.dbHelper.getItem(
+                libraryID,
+                annotationKey,
+            );
+            if (!annoItem || annoItem.itemType !== "annotation") {
+                services.notificationService.notify(
+                    "warning",
+                    "Annotation not found.",
+                );
+                return;
+            }
+
+            const data = annoItem.raw.data as AnnotationData;
+            const current = data.tags ?? [];
+            const all = await workerBridge.tag.getTagNames();
+
+            new TagEditModal(this.app, {
+                itemTitle: this.describeAnnotation(data),
+                initialTags: current,
+                suggestions: all,
+                onSave: async (tags) => {
+                    await workerBridge.tag.setItemTags(
+                        libraryID,
+                        annotationKey,
+                        tags,
+                    );
+
+                    // Push updated tags back into the reader iframe.
+                    await this.refreshAnnotationsFromDB();
+
+                    // Re-render the owning source note if one already exists
+                    // (never create a new one here).
+                    const paperKey =
+                        this.attachmentItem.parentItem !== ""
+                            ? this.attachmentItem.parentItem
+                            : this.attachmentItem.key;
+                    try {
+                        if (services.indexService.getFileByKey(paperKey)) {
+                            await workerBridge.libraryNote.triggerUpdate(
+                                libraryID,
+                                paperKey,
+                                { forceUpdateContent: true },
+                            );
+                        }
+                    } catch {
+                        // Index not ready / no note — ignore.
+                    }
+
+                    // services.notificationService.notify(
+                    //     "success",
+                    //     "Tags updated.",
+                    // );
+                },
+            }).open();
+        } catch (e) {
+            services.logService.error(
+                "Failed to open annotation tag editor",
+                "ZoteroReaderView",
+                e,
+            );
+            services.notificationService.notify(
+                "error",
+                "Failed to open tag editor.",
+            );
+        }
+    }
+
+    /**
+     * Build a short, human-readable label for an annotation to show as the
+     * tag-editor subtitle (e.g. `Highlight: "some text"`).
+     */
+    private describeAnnotation(data: AnnotationData): string {
+        const type = data.annotationType || "annotation";
+        const label = type.charAt(0).toUpperCase() + type.slice(1);
+        const text = (
+            data.annotationText ||
+            data.annotationComment ||
+            ""
+        ).trim();
+        if (!text) return label;
+        const truncated = text.length > 80 ? text.slice(0, 80) + "…" : text;
+        return `${label}: ${truncated}`;
     }
 }

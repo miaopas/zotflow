@@ -16,6 +16,7 @@ import {
     ZOTFLOW_CITATION_MIME,
     type ZotFlowCitationPayload,
 } from "ui/editor/citation-helper";
+import { TagEditModal } from "ui/modals/tag-edit";
 
 /** Pixel indentation per tree depth level. */
 export const INDENT_SIZE = 20;
@@ -420,11 +421,78 @@ export const NodeItem = ({
             });
         }
 
+        if (nodeType === "item") {
+            menu.addItem((item) => {
+                item.setTitle("Edit tags…")
+                    .setIcon("tag")
+                    .onClick(async () => {
+                        try {
+                            const dbItem = await workerBridge.dbHelper.getItem(
+                                node.data.libraryID,
+                                node.data.key,
+                            );
+                            const current = dbItem?.raw?.data?.tags ?? [];
+                            const all = await workerBridge.tag.getTagNames();
+
+                            new TagEditModal(services.app, {
+                                itemTitle: node.data.name,
+                                initialTags: current,
+                                suggestions: all,
+                                onSave: async (tags) => {
+                                    await workerBridge.tag.setItemTags(
+                                        node.data.libraryID,
+                                        node.data.key,
+                                        tags,
+                                    );
+
+                                    // Refresh the tree so chip display updates.
+                                    services.taskMonitor.treeChanged.emit();
+
+                                    // Re-render the owning source note if one
+                                    // already exists (never create a new one).
+                                    const noteKey =
+                                        dbItem?.parentItem || node.data.key;
+                                    try {
+                                        if (
+                                            services.indexService.getFileByKey(
+                                                noteKey,
+                                            )
+                                        ) {
+                                            await workerBridge.libraryNote.triggerUpdate(
+                                                node.data.libraryID,
+                                                noteKey,
+                                                { forceUpdateContent: true },
+                                            );
+                                        }
+                                    } catch {
+                                        // Index not ready / no note — ignore.
+                                    }
+
+                                    services.notificationService.notify(
+                                        "success",
+                                        "Tags updated.",
+                                    );
+                                },
+                            }).open();
+                        } catch (err) {
+                            services.logService.error(
+                                "Failed to open tag editor",
+                                "TreeView",
+                                err,
+                            );
+                            services.notificationService.notify(
+                                "error",
+                                "Failed to open tag editor.",
+                            );
+                        }
+                    });
+            });
+        }
+
         if (
             nodeType === "collection" ||
             nodeType === "library" ||
-            (isTopLevelItem && node.data.itemType !== "note") ||
-            (nodeType === "item" && node.data.itemType === "note")
+            nodeType === "item"
         ) {
             menu.showAtMouseEvent(e.nativeEvent);
         }

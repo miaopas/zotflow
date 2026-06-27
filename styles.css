@@ -149,6 +149,93 @@
 }
 
 /* ============================================================
+   Tag Edit Modal
+   ============================================================ */
+
+.zotflow-tag-edit-modal {
+    & .modal-header {
+        & .modal-title {
+            font-size: var(--font-ui-medium);
+        }
+    }
+}
+
+.zotflow-tag-edit-subtitle {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    margin-bottom: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.zotflow-tag-edit-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 32px;
+    padding: 6px;
+    margin-bottom: 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+    background-color: var(--background-secondary);
+}
+
+.zotflow-tag-edit-empty {
+    color: var(--text-faint);
+    font-size: var(--font-ui-small);
+    padding: 4px 2px;
+}
+
+.zotflow-tag-edit-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background-color: var(--tag-background);
+    border: var(--tag-border-width) solid var(--tag-border-color);
+    border-radius: var(--tag-radius);
+    color: var(--tag-color);
+    font-size: var(--font-ui-small);
+    padding: 2px 8px;
+}
+
+.zotflow-tag-edit-chip.is-automatic {
+    opacity: 0.75;
+    font-style: italic;
+}
+
+.zotflow-tag-edit-chip-remove {
+    display: flex;
+    cursor: pointer;
+    font-weight: bold;
+    line-height: 1;
+    opacity: 0.7;
+    transform: scale(0.8);
+}
+
+.zotflow-tag-edit-chip-remove:hover {
+    opacity: 0.9;
+    color: var(--text-error);
+}
+
+.zotflow-tag-edit-row {
+    margin-bottom: 8px;
+}
+
+.zotflow-tag-edit-input {
+    width: 100%;
+}
+
+/* Tag autocomplete suggestion items */
+.zotflow-tag-suggestion {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: var(--font-ui-small);
+}
+
+/* ============================================================
    Notification Styles
    ============================================================ */
 
