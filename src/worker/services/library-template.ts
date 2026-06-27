@@ -48,7 +48,7 @@ tags: [{% for t in item.tags %}"#{{ t.tag | replace: " ", "\_" }}"{% unless forl
 {%- if item.attachments.length > 0 -%}
 ## Attachments
 {%- for attachment in item.attachments -%}
-- [{{ attachment.filename }}](obsidian://zotflow?type=open-attachment&libraryID={{ attachment.libraryID }}&key={{ attachment.key }})
+- [{{ attachment.filename }}]({{ attachment | attachment_link }})
 {%- endfor -%}
 
 {%- endif -%}
@@ -65,7 +65,7 @@ tags: [{% for t in item.tags %}"#{{ t.tag | replace: " ", "\_" }}"{% unless forl
 {%- if attachment.annotations.length > 0 -%}
 ### {{ attachment.filename }}
 {%- for annotation in attachment.annotations -%}
-> [!zotflow-{{ annotation.type }}-{{ annotation.color }}] [{{ attachment.filename }}, p.{{ annotation.pageLabel }}](obsidian://zotflow?type=open-attachment&libraryID={{ attachment.libraryID }}&key={{ attachment.key }}&navigation={{ annotation.key | process_nav_info}})
+> [!zotflow-{{ annotation.type }}-{{ annotation.color }}] [{{ attachment.filename }}, p.{{ annotation.pageLabel }}]({{ annotation | annotation_link }})
 {%- if annotation.type == "ink" or annotation.type == "image"-%}
 > > ![[{{settings.annotationImageFolder}}/{{ annotation.key }}.png]]
 {%- else -%}
@@ -83,7 +83,7 @@ tags: [{% for t in item.tags %}"#{{ t.tag | replace: " ", "\_" }}"{% unless forl
 {%- if item.attachments.length == 0 and item.itemType == "attachment" and item.annotations.length > 0 -%}
 ## Annotations
 {%- for annotation in item.annotations -%}
-> [!zotflow-{{ annotation.type }}-{{ annotation.color }}] [{{ item.title }}, p.{{ annotation.pageLabel }}](obsidian://zotflow?type=open-attachment&libraryID={{ item.libraryID }}&key={{ item.key }}&navigation={{ annotation.key | process_nav_info}})
+> [!zotflow-{{ annotation.type }}-{{ annotation.color }}] [{{ item.title }}, p.{{ annotation.pageLabel }}]({{ annotation | annotation_link }})
 {%- if annotation.type == "ink" or annotation.type == "image"-%}
 > > ![[{{settings.annotationImageFolder}}/{{ annotation.key }}.png]]
 {%- else -%}
@@ -145,6 +145,48 @@ export class LibraryTemplateService {
             };
             return encodeURIComponent(JSON.stringify(navInfo));
         });
+        // Link helpers — emit either a ZotFlow protocol URL (opens the built-in
+        // reader / source note) or a native Zotero URL. The target is chosen
+        // per call via a filter argument.
+        const resolveTarget = (arg: unknown): "zotflow" | "zotero" =>
+            String(arg).toLowerCase() === "zotero" ? "zotero" : "zotflow";
+        const getZoteroPrefix = (ctx: any): string =>
+            ctx?.context?.environments?.__zfZoteroLibPrefix || "library";
+        this.engine.registerFilter(
+            "annotation_link",
+            function (this: any, anno: any, target?: string): string {
+                if (!anno) return "";
+                if (resolveTarget(target) === "zotero") {
+                    const prefix = getZoteroPrefix(this);
+                    const parent = anno.parentItem || "";
+                    return `zotero://open-pdf/${prefix}/items/${parent}?annotation=${anno.key}`;
+                }
+                return `obsidian://zotflow?type=open-annotation&libraryID=${anno.libraryID}&key=${anno.key}`;
+            },
+        );
+        this.engine.registerFilter(
+            "attachment_link",
+            function (this: any, att: any, target?: string): string {
+                if (!att) return "";
+                if (resolveTarget(target) === "zotero") {
+                    const prefix = getZoteroPrefix(this);
+                    return `zotero://open-pdf/${prefix}/items/${att.key}`;
+                }
+                return `obsidian://zotflow?type=open-attachment&libraryID=${att.libraryID}&key=${att.key}`;
+            },
+        );
+        this.engine.registerFilter(
+            "item_link",
+            function (this: any, item: any, target?: string): string {
+                if (!item) return "";
+                if (resolveTarget(target) === "zotero") {
+                    const prefix = getZoteroPrefix(this);
+                    return `zotero://select/${prefix}/items/${item.key}`;
+                }
+                return `obsidian://zotflow?type=open-note&libraryID=${item.libraryID}&key=${item.key}`;
+            },
+        );
+
         this.engine.registerFilter(
             "wrap_editable",
             /**
@@ -441,6 +483,18 @@ export class LibraryTemplateService {
             if (a.readOnly) readOnlyKeys.add(`ANNO:${a.key}`);
         }
 
+        // Determine the Zotero URI library path prefix: "library" for the
+        // personal library, "groups/<id>" for group libraries.
+        let zoteroLibPrefix = "library";
+        try {
+            const lib = await db.libraries.get(item.libraryID);
+            if (lib?.type === "group") {
+                zoteroLibPrefix = `groups/${item.libraryID}`;
+            }
+        } catch {
+            // Default to personal-library prefix on lookup failure.
+        }
+
         return {
             item: itemContext,
             settings: {
@@ -449,6 +503,7 @@ export class LibraryTemplateService {
                     this.settings.annotationImageFolder.replace(/\/$/, ""),
             },
             __zfReadOnlyKeys: readOnlyKeys,
+            __zfZoteroLibPrefix: zoteroLibPrefix,
         };
     }
 
@@ -488,7 +543,7 @@ export class LibraryTemplateService {
                 this.settings.zoteroapikey,
                 (item) => item.syncStatus !== "deleted",
             )
-        ).map((a) => this.mapToAnnotationContext(a));
+        ).map((a) => this.mapToAnnotationContext(a, item.key));
 
         const attachmentAnnotations = attachments.flatMap(
             (att) => att.annotations,
@@ -522,6 +577,7 @@ export class LibraryTemplateService {
             key: item.key,
             version: item.version,
             libraryID: item.libraryID,
+            parentItem: item.parentItem || "",
             citationKey: item.citationKey || "",
             itemPaths: itemPaths,
             notes,
@@ -562,6 +618,7 @@ export class LibraryTemplateService {
         return {
             key: item.key,
             libraryID: item.libraryID,
+            parentItem: item.parentItem || "",
             title: item.title || "",
             note: data.note || "",
             tags: data.tags || [],
@@ -572,10 +629,12 @@ export class LibraryTemplateService {
 
     private mapToAnnotationContext(
         annotation: AnnotationJSON,
+        parentItem?: string,
     ): AnnotationTemplateContext {
         return {
             key: annotation.id!,
             libraryID: annotation.libraryID!,
+            parentItem,
             type: annotation.type,
             authorName: annotation.authorName,
             text: this.sanitizeQuotesString(annotation.text || ""),
@@ -660,12 +719,13 @@ export class LibraryTemplateService {
                 this.settings.zoteroapikey,
                 (item) => item.syncStatus !== "deleted",
             )
-        ).map((a) => this.mapToAnnotationContext(a));
+        ).map((a) => this.mapToAnnotationContext(a, item.key));
 
         const data = item.raw.data || {};
         return {
             key: item.key,
             libraryID: item.libraryID,
+            parentItem: item.parentItem || "",
             filename: data.filename || data.title || "",
             contentType: data.contentType || "",
             tags: data.tags || [],

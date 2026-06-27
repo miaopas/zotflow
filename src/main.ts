@@ -519,6 +519,34 @@ export default class ZotFlow extends Plugin {
                 await workerBridge.libraryNote.openNote(libID, key);
             } else if (type === "open-attachment") {
                 await openAttachment(libID, key, this.app, navigation);
+            } else if (type === "open-annotation") {
+                // Locate the annotation by key, then open its parent attachment
+                // navigated to the annotation. Only the annotation id is needed.
+                const annotation = await workerBridge.dbHelper.getItem(
+                    libID,
+                    key,
+                );
+                if (!annotation || annotation.itemType !== "annotation") {
+                    services.notificationService.notify(
+                        "warning",
+                        "Annotation not found.",
+                    );
+                    return;
+                }
+                const attachmentKey = annotation.parentItem;
+                if (!attachmentKey) {
+                    services.notificationService.notify(
+                        "warning",
+                        "Annotation has no parent attachment.",
+                    );
+                    return;
+                }
+                await openAttachment(
+                    libID,
+                    attachmentKey,
+                    this.app,
+                    JSON.stringify({ annotationID: key }),
+                );
             } else {
                 services.logService.log(
                     "warn",
