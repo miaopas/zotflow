@@ -11,6 +11,7 @@ export interface LibrarySnapshotEntry {
     mode: LibrarySyncMode | undefined;
     hasNotesAccess: boolean;
     canWrite: boolean;
+    isGroup: boolean;
 }
 
 /**
@@ -161,6 +162,7 @@ export class LibraryService {
                 mode: this.getMode(id),
                 hasNotesAccess,
                 canWrite,
+                isGroup: id !== keyInfo.userID,
             });
         }
         return out;

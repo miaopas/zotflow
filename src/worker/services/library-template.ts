@@ -16,6 +16,11 @@ import type {
 } from "types/zotero-item";
 import type { ZotFlowSettings } from "settings/types";
 import { ZotFlowError, ZotFlowErrorCode } from "utils/error";
+import {
+    zoteroLibraryPrefix,
+    zoteroOpenPdfUri,
+    zoteroSelectItemUri,
+} from "utils/zotero-uri";
 import { getAnnotationJson } from "db/annotation";
 import type { AnnotationJSON } from "types/zotero-reader";
 import type { DbHelperService } from "./db-helper";
@@ -158,8 +163,11 @@ export class LibraryTemplateService {
                 if (!anno) return "";
                 if (resolveTarget(target) === "zotero") {
                     const prefix = getZoteroPrefix(this);
-                    const parent = anno.parentItem || "";
-                    return `zotero://open-pdf/${prefix}/items/${parent}?annotation=${anno.key}`;
+                    return zoteroOpenPdfUri(
+                        prefix,
+                        anno.parentItem || "",
+                        anno.key,
+                    );
                 }
                 return `obsidian://zotflow?type=open-annotation&libraryID=${anno.libraryID}&key=${anno.key}`;
             },
@@ -170,7 +178,7 @@ export class LibraryTemplateService {
                 if (!att) return "";
                 if (resolveTarget(target) === "zotero") {
                     const prefix = getZoteroPrefix(this);
-                    return `zotero://open-pdf/${prefix}/items/${att.key}`;
+                    return zoteroOpenPdfUri(prefix, att.key);
                 }
                 return `obsidian://zotflow?type=open-attachment&libraryID=${att.libraryID}&key=${att.key}`;
             },
@@ -181,7 +189,7 @@ export class LibraryTemplateService {
                 if (!item) return "";
                 if (resolveTarget(target) === "zotero") {
                     const prefix = getZoteroPrefix(this);
-                    return `zotero://select/${prefix}/items/${item.key}`;
+                    return zoteroSelectItemUri(prefix, item.key);
                 }
                 return `obsidian://zotflow?type=open-note&libraryID=${item.libraryID}&key=${item.key}`;
             },
@@ -485,12 +493,13 @@ export class LibraryTemplateService {
 
         // Determine the Zotero URI library path prefix: "library" for the
         // personal library, "groups/<id>" for group libraries.
-        let zoteroLibPrefix = "library";
+        let zoteroLibPrefix = zoteroLibraryPrefix(false, item.libraryID);
         try {
             const lib = await db.libraries.get(item.libraryID);
-            if (lib?.type === "group") {
-                zoteroLibPrefix = `groups/${item.libraryID}`;
-            }
+            zoteroLibPrefix = zoteroLibraryPrefix(
+                lib?.type === "group",
+                item.libraryID,
+            );
         } catch {
             // Default to personal-library prefix on lookup failure.
         }

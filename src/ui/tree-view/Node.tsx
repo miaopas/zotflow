@@ -17,6 +17,7 @@ import {
     type ZotFlowCitationPayload,
 } from "ui/editor/citation-helper";
 import { TagEditModal } from "ui/modals/tag-edit";
+import { zoteroLibraryPrefix, zoteroSelectItemUri } from "utils/zotero-uri";
 
 /** Pixel indentation per tree depth level. */
 export const INDENT_SIZE = 20;
@@ -422,6 +423,35 @@ export const NodeItem = ({
         }
 
         if (nodeType === "item") {
+            menu.addItem((item) => {
+                item.setTitle("Open in Zotero")
+                    .setIcon("external-link")
+                    .onClick(() => {
+                        try {
+                            const prefix = zoteroLibraryPrefix(
+                                services.libraryCache.isGroup(
+                                    node.data.libraryID,
+                                ),
+                                node.data.libraryID,
+                            );
+                            const url = zoteroSelectItemUri(
+                                prefix,
+                                node.data.key,
+                            );
+                            window.open(url, "_blank", "noopener,noreferrer");
+                        } catch (err) {
+                            services.logService.error(
+                                "Failed to open item in Zotero",
+                                "TreeView",
+                                err,
+                            );
+                            services.notificationService.notify(
+                                "error",
+                                "Failed to open item in Zotero.",
+                            );
+                        }
+                    });
+            });
             menu.addItem((item) => {
                 item.setTitle("Edit tags…")
                     .setIcon("tag")

@@ -7,6 +7,7 @@ interface LibraryEntry {
     mode: LibrarySyncMode | undefined;
     hasNotesAccess: boolean;
     canWrite: boolean;
+    isGroup: boolean;
 }
 
 /**
@@ -43,6 +44,7 @@ export class LibraryCache {
                     mode: entry.mode,
                     hasNotesAccess: entry.hasNotesAccess,
                     canWrite: entry.canWrite,
+                    isGroup: entry.isGroup,
                 });
             }
         } catch (e) {
@@ -87,6 +89,11 @@ export class LibraryCache {
 
     canWrite(libraryID: number): boolean {
         return this.entries.get(libraryID)?.canWrite ?? false;
+    }
+
+    /** Whether the library is a Zotero group library (vs. the personal one). */
+    isGroup(libraryID: number): boolean {
+        return this.entries.get(libraryID)?.isGroup ?? false;
     }
 
     /* ================================================================= */
