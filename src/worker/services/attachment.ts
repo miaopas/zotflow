@@ -329,8 +329,6 @@ export class AttachmentService {
                     `Downloading ${item.raw.data.filename || item.raw.data.title || item.key}...`,
                 );
 
-                console.log(item.raw);
-
                 // Try WebDAV first if enabled
                 if (this.settings.useWebDav) {
                     try {
