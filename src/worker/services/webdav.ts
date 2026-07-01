@@ -176,6 +176,100 @@ export class WebDavService {
         }
     }
 
+    /**
+     * Fetch the byte size of a remote WebDAV file via a HEAD request.
+     *
+     * Used on mobile (Android) to decide whether a payload is small enough to
+     * download safely — Obsidian Android's `requestUrl` loads the whole body
+     * into memory and can OOM/crash on large files.
+     *
+     * @param remotePath Relative path to the file on the WebDAV server.
+     * @returns The Content-Length in bytes, or `null` if the server did not
+     *          report it.
+     */
+    async getContentLength(remotePath: string): Promise<number | null> {
+        if (
+            !this.settings.webDavUrl ||
+            !this.settings.webDavUser ||
+            !this.settings.webdavpassword
+        ) {
+            throw new ZotFlowError(
+                ZotFlowErrorCode.CONFIG_MISSING,
+                "WebDavService",
+                "WebDAV credentials not configured",
+            );
+        }
+
+        let baseUrl = this.settings.webDavUrl;
+        if (!baseUrl.endsWith("/")) {
+            baseUrl += "/";
+        }
+        const fullUrl = baseUrl + remotePath.replace(/^\//, "");
+
+        const credentials = btoa(
+            `${this.settings.webDavUser}:${this.settings.webdavpassword}`,
+        );
+
+        try {
+            const response = await fetch(fullUrl, {
+                method: "HEAD",
+                headers: {
+                    Authorization: `Basic ${credentials}`,
+                },
+            });
+
+            if (!response.ok) {
+                this.parentHost.log(
+                    "debug",
+                    "WebDAV HEAD returned non-success status.",
+                    "WebDavService",
+                    {
+                        status: response.status,
+                        fullUrl,
+                    },
+                );
+                throw new ZotFlowError(
+                    ZotFlowErrorCode.NETWORK_ERROR,
+                    "WebDavService",
+                    `WebDAV HEAD failed with status: ${response.status}`,
+                );
+            }
+
+            const raw = response.headers.get("content-length");
+            const bytes = raw ? Number.parseInt(raw, 10) : NaN;
+            if (!Number.isFinite(bytes)) {
+                this.parentHost.log(
+                    "debug",
+                    "WebDAV HEAD did not report a usable content-length.",
+                    "WebDavService",
+                    {
+                        fullUrl,
+                        rawContentLength: raw,
+                    },
+                );
+                return null;
+            }
+
+            this.parentHost.log(
+                "debug",
+                "WebDAV HEAD content-length resolved.",
+                "WebDavService",
+                {
+                    fullUrl,
+                    bytes,
+                },
+            );
+            return bytes;
+        } catch (e: any) {
+            throw ZotFlowError.wrap(
+                e,
+                ZotFlowErrorCode.NETWORK_ERROR,
+                "WebDavService",
+                "WebDAV HEAD request failed",
+            );
+        }
+    }
+
     async verify(url: string, user: string, pass: string): Promise<boolean> {
         if (!url || !user || !pass) {
             throw new ZotFlowError(

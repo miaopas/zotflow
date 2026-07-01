@@ -23,6 +23,9 @@ export interface IParentProxy {
     ): void;
     request(request: RequestUrlParam): Promise<IRequestResponse>;
 
+    // Platform
+    isAndroidApp(): Promise<boolean>;
+
     // Filesystem
     readTextFile(path: string): Promise<string | null>;
     writeTextFile(path: string, content: string): Promise<void>;

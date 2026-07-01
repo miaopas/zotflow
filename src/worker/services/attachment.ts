@@ -18,6 +18,15 @@ import type { IDBZoteroFile, IDBZoteroItem } from "types/db-schema";
 export class AttachmentService {
     private downloadLocks: Map<string, Promise<Blob>> = new Map();
 
+    /**
+     * Maximum attachment size (bytes) allowed to download on Obsidian Android.
+     *
+     * Android's `requestUrl` buffers the entire response body in memory, so
+     * large downloads (~20 MB+) can exhaust the heap and crash the app. On
+     * Android we probe the size first and refuse anything above this limit.
+     */
+    private static readonly MOBILE_MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024;
+
     constructor(
         private webdav: WebDavService,
         private settings: ZotFlowSettings,
@@ -275,6 +284,13 @@ export class AttachmentService {
             },
         );
 
+        // Mobile OOM guard: on Obsidian Android, requestUrl buffers the whole
+        // response in memory and can crash on large files. Linked files are
+        // read from disk (streamed by the OS) so they are exempt.
+        if (linkMode !== "linked_file") {
+            await this.enforceMobileDownloadLimit(item);
+        }
+
         // Download Strategy
         switch (linkMode) {
             case "linked_file": {
@@ -312,6 +328,8 @@ export class AttachmentService {
                     "info",
                     `Downloading ${item.raw.data.filename || item.raw.data.title || item.key}...`,
                 );
+
+                console.log(item.raw);
 
                 // Try WebDAV first if enabled
                 if (this.settings.useWebDav) {
@@ -574,6 +592,88 @@ export class AttachmentService {
         );
 
         return blob;
+    }
+
+    /**
+     * Enforce the mobile (Android) download size ceiling.
+     *
+     * Probes the attachment's byte size before any full download is attempted
+     * and throws if it exceeds {@link AttachmentService.MOBILE_MAX_DOWNLOAD_BYTES}.
+     * Size is resolved from the WebDAV `Content-Length` (HEAD request) when
+     * WebDAV is enabled, otherwise from the Zotero API `enclosure` link
+     * metadata. On non-Android platforms this is a no-op. When the size cannot
+     * be determined the download is allowed to proceed (fail-open).
+     */
+    private async enforceMobileDownloadLimit(
+        item: IDBZoteroItem<AttachmentData>,
+    ): Promise<void> {
+        if (!(await this.parentHost.isAndroidApp())) return;
+
+        let sizeBytes: number | null = null;
+
+        if (this.settings.useWebDav) {
+            try {
+                sizeBytes = await this.webdav.getContentLength(
+                    `${item.key}.zip`,
+                );
+            } catch (e) {
+                this.parentHost.log(
+                    "warn",
+                    `WebDAV HEAD size probe failed for ${item.key}, falling back to enclosure metadata.`,
+                    "AttachmentService",
+                    e,
+                );
+            }
+        }
+
+        if (sizeBytes === null) {
+            // Zotero API exposes the stored file size on the enclosure link.
+            const enclosure = item.raw.links?.enclosure as
+                | { length?: number }
+                | undefined;
+            if (typeof enclosure?.length === "number") {
+                sizeBytes = enclosure.length;
+            }
+        }
+
+        if (sizeBytes === null) {
+            this.parentHost.log(
+                "debug",
+                "Attachment size unknown; skipping mobile size guard.",
+                "AttachmentService",
+                { itemKey: item.key },
+            );
+            return;
+        }
+
+        this.parentHost.log(
+            "debug",
+            "Mobile size guard evaluated.",
+            "AttachmentService",
+            {
+                itemKey: item.key,
+                sizeBytes,
+                limitBytes: AttachmentService.MOBILE_MAX_DOWNLOAD_BYTES,
+            },
+        );
+
+        if (sizeBytes > AttachmentService.MOBILE_MAX_DOWNLOAD_BYTES) {
+            const sizeMB = (sizeBytes / 1024 / 1024).toFixed(1);
+            const limitMB = Math.round(
+                AttachmentService.MOBILE_MAX_DOWNLOAD_BYTES / 1024 / 1024,
+            );
+            const fileName =
+                item.raw.data.filename || item.raw.data.title || item.key;
+            this.parentHost.notify(
+                "error",
+                `"${fileName}" is ${sizeMB} MB. On Android, attachments larger than ${limitMB} MB can't be downloaded. Open it on desktop instead.`,
+            );
+            throw new ZotFlowError(
+                ZotFlowErrorCode.ATTACHMENT_TOO_LARGE,
+                "AttachmentService",
+                `Attachment ${item.key} (${sizeMB} MB) exceeds the ${limitMB} MB Android download limit.`,
+            );
+        }
     }
 
     /**

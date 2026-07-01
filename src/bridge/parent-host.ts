@@ -8,6 +8,7 @@ import {
     MarkdownView,
     parseYaml,
     stringifyYaml,
+    Platform,
 } from "obsidian";
 import {
     saveTextFile,
@@ -69,6 +70,10 @@ export class ParentHost implements IParentProxy {
             );
             throw new Error(`Network Error: ${error.message}`);
         }
+    }
+
+    public async isAndroidApp(): Promise<boolean> {
+        return Platform.isAndroidApp;
     }
 
     public async readTextFile(path: string): Promise<string | null> {
