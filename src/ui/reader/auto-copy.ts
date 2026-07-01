@@ -66,7 +66,12 @@ export async function copyAnnotationOnCreate(
                 {
                     libraryID: ctx.libraryID,
                     key: ctx.parentItemKey,
-                    annotations: [stripAnnotationForPayload(annotation)],
+                    annotations: [
+                        {
+                            ...stripAnnotationForPayload(annotation),
+                            libraryID: ctx.libraryID,
+                        },
+                    ],
                 },
                 services.settings.defaultCitationFormat,
             );

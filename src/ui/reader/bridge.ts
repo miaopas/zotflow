@@ -220,13 +220,18 @@ export class IframeReaderBridge {
                     annotations.length
                 ) {
                     const parentKey = this.getParentItemKey()!;
+                    const libraryID = this.attachmentItem.libraryID;
                     const payload: ZotFlowCitationPayload = {
                         type: "zotflow-citation",
-                        libraryID: this.attachmentItem.libraryID,
+                        libraryID,
                         key: parentKey,
-                        annotations: annotations.map((a) =>
-                            stripAnnotationForPayload(a),
-                        ),
+                        // The reader strips `libraryID` from annotations during
+                        // drag, so restore it from the attachment's library for
+                        // annotation-link generation.
+                        annotations: annotations.map((a) => ({
+                            ...stripAnnotationForPayload(a),
+                            libraryID,
+                        })),
                     };
                     dataTransfer.setData(
                         ZOTFLOW_CITATION_MIME,
