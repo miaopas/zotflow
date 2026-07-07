@@ -236,6 +236,21 @@
 }
 
 /* ============================================================
+   Search Operator Autocomplete (tree view + search modal)
+   ============================================================ */
+
+.zotflow-tree-view-search-input {
+    padding-inline-end: 0px !important;
+}
+
+.zotflow-search-value {
+    font-size: var(--font-ui-small);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ============================================================
    Notification Styles
    ============================================================ */
 

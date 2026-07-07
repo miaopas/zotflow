@@ -1,7 +1,9 @@
 import { setIcon } from "obsidian";
 import { workerBridge } from "bridge";
 import { services } from "services/services";
+import { parseSearchQuery, splitHighlight } from "utils/search-query";
 import type { AnyIDBZoteroItem } from "types/db-schema";
+import type { SearchFilterField } from "utils/search-query";
 
 export type SuggestionItemFilter = (item: AnyIDBZoteroItem) => boolean;
 
@@ -15,7 +17,18 @@ interface SearchEmptyState {
     message: string;
 }
 
-export type SuggestionItem = AnyIDBZoteroItem | SearchHeader | SearchEmptyState;
+/** An operator reminder row (e.g. `collection:` — items in a collection). */
+export interface SearchValueCompletion {
+    isValueCompletion: true;
+    field: SearchFilterField;
+    value: string;
+}
+
+export type SuggestionItem =
+    | AnyIDBZoteroItem
+    | SearchHeader
+    | SearchEmptyState
+    | SearchValueCompletion;
 
 /**
  * Shared Zotero item search + rendering logic.
@@ -214,18 +227,20 @@ export class ZoteroItemSuggest {
     }
 
     renderHighlight(el: HTMLElement, text: string, query: string): void {
-        if (!query) {
+        const { freeTokens } = parseSearchQuery(query);
+        const segments = splitHighlight(text, freeTokens);
+
+        // Fast path: nothing to highlight.
+        if (segments.length === 1 && !segments[0]!.match) {
             el.setText(text);
             return;
         }
-        const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const regex = new RegExp(`(${escapedQuery})`, "gi");
 
-        text.split(regex).forEach((part) => {
-            if (part.toLowerCase() === query.toLowerCase()) {
-                el.createSpan({ cls: "suggestion-highlight", text: part });
+        segments.forEach((seg) => {
+            if (seg.match) {
+                el.createSpan({ cls: "suggestion-highlight", text: seg.text });
             } else {
-                el.createSpan({ text: part });
+                el.createSpan({ text: seg.text });
             }
         });
     }

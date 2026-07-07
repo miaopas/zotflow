@@ -14,6 +14,7 @@ import { AnnotationService } from "./services/annotation";
 import { KeyService } from "./services/key";
 import { LibraryService } from "./services/library";
 import { DbHelperService } from "./services/db-helper";
+import { SearchService } from "./services/search";
 import { TagService } from "./services/tag";
 import { NotePathService } from "./services/note-path";
 import { ConvertService } from "./services/convert";
@@ -104,6 +105,7 @@ let _annotation: AnnotationService | undefined;
 let _key: KeyService | undefined;
 let _library: LibraryService | undefined;
 let _dbHelper: DbHelperService | undefined;
+let _search: SearchService | undefined;
 let _tag: TagService | undefined;
 let _notePath: NotePathService | undefined;
 let _convert: ConvertService | undefined;
@@ -129,6 +131,7 @@ function assertInitialized() {
         !_key ||
         !_library ||
         !_dbHelper ||
+        !_search ||
         !_tag ||
         !_notePath ||
         !_convert ||
@@ -188,7 +191,13 @@ const exposedApi: WorkerAPI = {
         try {
             _zotero = new ZoteroAPIService(settings.zoteroapikey);
             _library = new LibraryService(settings, parentHost);
-            _dbHelper = new DbHelperService(settings, parentHost, _library);
+            _search = new SearchService();
+            _dbHelper = new DbHelperService(
+                settings,
+                parentHost,
+                _library,
+                _search,
+            );
             _tag = new TagService(settings, parentHost);
             _webdav = new WebDavService(settings, parentHost);
             _attachment = new AttachmentService(
@@ -198,7 +207,12 @@ const exposedApi: WorkerAPI = {
                 parentHost,
             );
             _sync = new SyncService(_zotero, settings, parentHost, _library);
-            _treeView = new TreeViewService(settings, parentHost, _library);
+            _treeView = new TreeViewService(
+                settings,
+                parentHost,
+                _library,
+                _search,
+            );
 
             _pdfProcessor = new PDFProcessWorker(
                 settings,

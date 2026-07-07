@@ -7,6 +7,8 @@ import type { ZotFlowSettings } from "settings/types";
 import { services } from "services/services";
 import { AttachmentSelectModal } from "./attachment-suggest";
 import { ZoteroItemSuggest } from "./zotero-item-suggest";
+import { getValueSuggestions } from "ui/search/autocomplete-data";
+import { analyzeInput, applyValueCompletion } from "utils/search-query";
 
 import type {
     SuggestionItem,
@@ -31,6 +33,13 @@ export abstract class BaseItemSearchModal extends SuggestModal<SuggestionItem> {
         this.setPlaceholder(placeholder);
         this.modalEl.addClass("zotflow-search-modal");
         this.limit = 20;
+        this.setInstructions([
+            { command: "collection:", purpose: "in a collection" },
+            { command: "tag:", purpose: "with a tag" },
+            { command: "type:", purpose: "item type" },
+            { command: "creator:", purpose: "by author" },
+            { command: "-tag:", purpose: "exclude" },
+        ]);
     }
 
     protected abstract handleItemSelected(
@@ -39,10 +48,35 @@ export abstract class BaseItemSearchModal extends SuggestModal<SuggestionItem> {
     ): void;
 
     async getSuggestions(query: string): Promise<SuggestionItem[]> {
+        // When the active token is `field:partial`, show value completions.
+        const analysis = analyzeInput(query);
+        if (analysis.mode === "value") {
+            const values = await getValueSuggestions(
+                analysis.field,
+                analysis.partial,
+            );
+            if (values.length > 0) {
+                return [
+                    { isHeader: true, label: analysis.field },
+                    ...values.map(
+                        (v): SuggestionItem => ({
+                            isValueCompletion: true,
+                            field: analysis.field,
+                            value: v,
+                        }),
+                    ),
+                ];
+            }
+        }
         return this.suggest.getSuggestions(query, 50);
     }
 
     renderSuggestion(item: SuggestionItem, el: HTMLElement) {
+        if ("isValueCompletion" in item) {
+            el.addClass("zotflow-search-value");
+            el.setText(item.value);
+            return;
+        }
         this.suggest.renderSuggestion(item, el, this.inputEl.value);
     }
 
@@ -57,6 +91,18 @@ export abstract class BaseItemSearchModal extends SuggestModal<SuggestionItem> {
     ): void {
         if ("isHeader" in item) return;
         if ("isEmpty" in item) return;
+
+        // Value-completion rows rewrite the input and re-query in place.
+        if ("isValueCompletion" in item) {
+            this.inputEl.value = applyValueCompletion(
+                this.inputEl.value,
+                item.field,
+                item.value,
+            );
+            this.inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+            this.inputEl.focus();
+            return;
+        }
 
         const zItem = item as AnyIDBZoteroItem;
         this.handleItemSelected(zItem, evt);

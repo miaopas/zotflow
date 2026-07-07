@@ -5,12 +5,14 @@ import React, {
     useEffect,
     useMemo,
     useCallback,
+    createContext,
 } from "react";
 import { Menu } from "obsidian";
 import { NodeApi, Tree } from "react-arborist";
 import { workerBridge } from "bridge";
 import { ObsidianIcon } from "../ObsidianIcon";
 import { NodeItem, INDENT_SIZE } from "./Node";
+import { TreeSearchSuggest } from "./search-suggest";
 import { services } from "services/services";
 
 import type { TreeTransferPayload } from "worker/services/tree-view";
@@ -38,6 +40,17 @@ export type ViewNode = {
     syncStatus?: string;
     tags?: string[];
 };
+
+/** Shared search state provided to tree nodes for highlighting matched text. */
+export interface TreeSearchState {
+    matchKeys: Set<string>;
+    freeTokens: string[];
+}
+
+export const TreeSearchContext = createContext<TreeSearchState>({
+    matchKeys: new Set<string>(),
+    freeTokens: [],
+});
 
 function rebuildTreeFromWorker(payload: TreeTransferPayload): ViewNode[] {
     const { entities, topology } = payload;
@@ -221,8 +234,14 @@ function sortTree(
 export const ZotFlowTree = () => {
     const [rawData, setRawData] = useState<TreeTransferPayload | null>(null);
     const [term, setTerm] = useState("");
+    const [searchState, setSearchState] = useState<{
+        term: string;
+        matchKeys: Set<string>;
+        freeTokens: string[];
+    }>({ term: "", matchKeys: new Set<string>(), freeTokens: [] });
     const [loading, setLoading] = useState(true);
     const containerRef = useRef<HTMLDivElement>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
     const [dims, setDims] = useState({ w: 300, h: 500 });
 
     // Sort state — initialised from persisted settings
@@ -249,6 +268,14 @@ export const ZotFlowTree = () => {
         return () => obs.disconnect();
     }, []);
 
+    // Attach operator/value autocomplete to the search input (once).
+    useEffect(() => {
+        if (!searchInputRef.current) return;
+        new TreeSearchSuggest(services.app, searchInputRef.current, (value) =>
+            setTerm(value),
+        );
+    }, []);
+
     useEffect(() => {
         const loadTree = async () => {
             setLoading(true);
@@ -268,6 +295,47 @@ export const ZotFlowTree = () => {
 
         loadTree();
     }, []);
+
+    // Debounced worker-side fuzzy search. Results (matched entity keys +
+    // highlight tokens) are cached and applied synchronously by `matchNode`.
+    useEffect(() => {
+        const trimmed = term.trim();
+        if (!trimmed) {
+            setSearchState({
+                term: "",
+                matchKeys: new Set<string>(),
+                freeTokens: [],
+            });
+            return;
+        }
+
+        let cancelled = false;
+        const handle = window.setTimeout(() => {
+            void (async () => {
+                try {
+                    const res = await workerBridge.treeView.searchTree(trimmed);
+                    if (!cancelled) {
+                        setSearchState({
+                            term: trimmed,
+                            matchKeys: new Set(res.matchedKeys),
+                            freeTokens: res.freeTokens,
+                        });
+                    }
+                } catch (err) {
+                    services.logService.error(
+                        "Tree search failed",
+                        "TreeView",
+                        err,
+                    );
+                }
+            })();
+        }, 150);
+
+        return () => {
+            cancelled = true;
+            window.clearTimeout(handle);
+        };
+    }, [term]);
 
     // Refresh tree data when a child note is created or updated
     useEffect(() => {
@@ -360,64 +428,53 @@ export const ZotFlowTree = () => {
         return sortTree(tree, collectionSort, itemSort);
     }, [rawData, collectionSort, itemSort]);
 
-    const handleSearch = (node: NodeApi<ViewNode>, term: string) => {
-        const lowerTerm = term.toLowerCase();
+    // The matching logic for the tree view:
+    // - All children shown
+    // - Leaf matches balloon into attachments
+    // - Siblings stay collapsed
+    const effectiveMatchKeys = useMemo(() => {
+        const base = searchState.matchKeys;
+        if (base.size === 0) return base;
 
-        /* ================================================================ */
-        /*  Case A: Item (Parent Node)                                     */
-        /* ================================================================ */
-        if (node.data.nodeType === "item") {
-            // Does it match itself?
-            if (node.data.name.toLowerCase().includes(lowerTerm)) return true;
-
-            // Only "real attachments" count as a match, Source Note does not count
-            if (node.data.children) {
-                const hasValidChild = node.data.children.some((child) =>
-                    child.name.toLowerCase().includes(lowerTerm),
-                );
-                if (hasValidChild) return true;
+        const result = new Set(base);
+        const visit = (nodes: ViewNode[]) => {
+            for (const n of nodes) {
+                if (n.children.length === 0) continue;
+                if (n.nodeType === "item") {
+                    const selfMatched = base.has(n.key);
+                    const childMatched = n.children.some((c) =>
+                        base.has(c.key),
+                    );
+                    if (selfMatched || childMatched) {
+                        result.add(n.key);
+                        for (const c of n.children) result.add(c.key);
+                    }
+                }
+                visit(n.children);
             }
+        };
+        visit(treeData);
+        return result;
+    }, [treeData, searchState.matchKeys]);
 
-            return false;
-        }
-
-        /* ================================================================ */
-        /*  Case B: Child Node (Source Note or PDF)                        */
-        /* ================================================================ */
-        if (node.parent && node.parent.data.nodeType === "item") {
-            const parent = node.parent;
-
-            // Does the parent match?
-            if (parent.data.name.toLowerCase().includes(lowerTerm)) {
-                return true;
-            }
-
-            // Check if any sibling matches (or if I match myself)
-            const hasValidSibling = parent.data.children.some((sibling) =>
-                sibling.name.toLowerCase().includes(lowerTerm),
-            );
-
-            if (hasValidSibling) {
-                return true;
-            }
-
-            return false;
-        }
-
-        /* ================================================================ */
-        /*  Case C: Standalone Attachment                                  */
-        /* ================================================================ */
-        return node.data.name.toLowerCase().includes(lowerTerm);
-    };
+    const handleSearch = useCallback(
+        (node: NodeApi<ViewNode>): boolean => {
+            if (effectiveMatchKeys.size === 0) return false;
+            return effectiveMatchKeys.has(node.data.key);
+        },
+        [effectiveMatchKeys],
+    );
 
     return (
         <div className="zotflow-tree-view-layout">
             <div className="zotflow-tree-view-header">
                 <div className="search-input-container global-search-input-container">
                     <input
+                        ref={searchInputRef}
                         placeholder="Search..."
                         type="search"
                         value={term}
+                        className="zotflow-tree-view-search-input"
                         onChange={(e) => setTerm(e.target.value)}
                     />
                     <div
@@ -455,22 +512,29 @@ export const ZotFlowTree = () => {
                     </div>
                 )}
                 {!loading && (
-                    <Tree
-                        data={treeData}
-                        width={dims.w}
-                        height={dims.h}
-                        rowHeight={28}
-                        indent={INDENT_SIZE}
-                        searchTerm={term}
-                        searchMatch={handleSearch}
-                        openByDefault={false}
-                        disableDrag={true}
-                        disableDrop={true}
-                        disableMultiSelection={true}
-                        dndRootElement={voidElement}
+                    <TreeSearchContext.Provider
+                        value={{
+                            matchKeys: searchState.matchKeys,
+                            freeTokens: searchState.freeTokens,
+                        }}
                     >
-                        {NodeItem}
-                    </Tree>
+                        <Tree
+                            data={treeData}
+                            width={dims.w}
+                            height={dims.h}
+                            rowHeight={28}
+                            indent={INDENT_SIZE}
+                            searchTerm={searchState.term}
+                            searchMatch={handleSearch}
+                            openByDefault={false}
+                            disableDrag={true}
+                            disableDrop={true}
+                            disableMultiSelection={true}
+                            dndRootElement={voidElement}
+                        >
+                            {NodeItem}
+                        </Tree>
+                    </TreeSearchContext.Provider>
                 )}
             </div>
         </div>

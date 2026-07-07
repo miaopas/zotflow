@@ -1,6 +1,8 @@
 import type { NodeRendererProps } from "react-arborist";
+import { useContext } from "react";
 import { Menu, setIcon } from "obsidian";
 import type { ViewNode } from "./TreeView";
+import { TreeSearchContext } from "./TreeView";
 import { ObsidianIcon } from "../ObsidianIcon";
 import { getAttachmentFileIcon, getItemTypeIcon } from "ui/icons";
 import { services } from "services/services";
@@ -18,22 +20,23 @@ import {
 } from "ui/editor/citation-helper";
 import { TagEditModal } from "ui/modals/tag-edit";
 import { zoteroLibraryPrefix, zoteroSelectItemUri } from "utils/zotero-uri";
+import { splitHighlight } from "utils/search-query";
 
 /** Pixel indentation per tree depth level. */
 export const INDENT_SIZE = 20;
 
-const Highlight = ({ text, term }: { text: string; term: string }) => {
-    if (!term) return <>{text}</>;
-    const parts = text.split(new RegExp(`(${term})`, "gi"));
+const Highlight = ({ text, tokens }: { text: string; tokens: string[] }) => {
+    if (!tokens.length) return <>{text}</>;
+    const segments = splitHighlight(text, tokens);
     return (
         <>
-            {parts.map((p, i) =>
-                p.toLowerCase() === term.toLowerCase() ? (
+            {segments.map((seg, i) =>
+                seg.match ? (
                     <span key={i} className="search-result-file-matched-text">
-                        {p}
+                        {seg.text}
                     </span>
                 ) : (
-                    p
+                    seg.text
                 ),
             )}
         </>
@@ -41,12 +44,9 @@ const Highlight = ({ text, term }: { text: string; term: string }) => {
 };
 
 /** React component rendering a single tree node with icon, label, drag support, and context menu. */
-export const NodeItem = ({
-    node,
-    style,
-    tree,
-}: NodeRendererProps<ViewNode>) => {
+export const NodeItem = ({ node, style }: NodeRendererProps<ViewNode>) => {
     const { nodeType, name, children } = node.data;
+    const { freeTokens: searchTokens } = useContext(TreeSearchContext);
     const isTopLevelItem =
         nodeType === "item" &&
         (node.parent?.data.nodeType === "library" ||
@@ -630,7 +630,7 @@ export const NodeItem = ({
                     flex: 1,
                 }}
             >
-                <Highlight text={name} term={tree.props.searchTerm || ""} />
+                <Highlight text={name} tokens={searchTokens} />
             </span>
 
             {/* File Tag */}
