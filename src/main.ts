@@ -31,7 +31,7 @@ import { ZotFlowLockExtension } from "ui/editor/zotflow-lock-extension";
 import { ZotFlowEditableRegionExtension } from "ui/editor/zotflow-editable-region-extension";
 import { handleEditorDrop } from "ui/editor/citation-helper";
 
-import { openAttachment } from "utils/viewer";
+import { openAttachment, openItemNote } from "utils/viewer";
 import { getLocalSidecarPath } from "utils/utils";
 import { checkFile, readTextFile, renameFile, deleteFile } from "utils/file";
 import { ActivityCenterModal } from "ui/activity-center/modal";
@@ -309,6 +309,69 @@ export default class ZotFlow extends Plugin {
                 this.citationSuggest.triggerManually();
             },
             hotkeys: [{ modifiers: ["Alt"], key: "c" }],
+        });
+
+        this.addCommand({
+            id: "create-child-note",
+            name: "Create child note for current source note",
+            callback: async () => {
+                const view =
+                    this.app.workspace.getActiveViewOfType(MarkdownView);
+                if (!view || !view.file) {
+                    services.notificationService.notify(
+                        "warning",
+                        "No note is currently open.",
+                    );
+                    return;
+                }
+
+                const cache = this.app.metadataCache.getFileCache(view.file);
+                const fm = cache?.frontmatter;
+                const zoteroKey = fm?.["zotero-key"];
+                const libraryID = fm?.["library-id"];
+
+                if (
+                    typeof zoteroKey !== "string" ||
+                    typeof libraryID !== "number"
+                ) {
+                    services.notificationService.notify(
+                        "warning",
+                        "This is not a valid ZotFlow source note.",
+                    );
+                    return;
+                }
+
+                if (!services.libraryCache.canEditNotes(libraryID)) {
+                    services.notificationService.notify(
+                        "warning",
+                        "You do not have permission to create notes in this library.",
+                    );
+                    return;
+                }
+
+                try {
+                    const noteKey = await workerBridge.itemNote.createChildNote(
+                        libraryID,
+                        zoteroKey,
+                    );
+                    await workerBridge.libraryNote.triggerUpdate(
+                        libraryID,
+                        zoteroKey,
+                        { forceUpdateContent: true },
+                    );
+                    await openItemNote(libraryID, noteKey, this.app);
+                } catch (err) {
+                    services.logService.error(
+                        "Failed to create child note",
+                        "Main",
+                        err,
+                    );
+                    services.notificationService.notify(
+                        "error",
+                        "Failed to create child note.",
+                    );
+                }
+            },
         });
 
         this.addCommand({
@@ -735,6 +798,42 @@ export default class ZotFlow extends Plugin {
                         }
                     });
             });
+
+            if (services.libraryCache.canEditNotes(libraryID as number)) {
+                menu.addItem((item) => {
+                    item.setTitle("ZotFlow: Create child note")
+                        .setIcon("sticky-note")
+                        .onClick(async () => {
+                            try {
+                                const noteKey =
+                                    await workerBridge.itemNote.createChildNote(
+                                        libraryID as number,
+                                        zoteroKey as string,
+                                    );
+                                await workerBridge.libraryNote.triggerUpdate(
+                                    libraryID as number,
+                                    zoteroKey as string,
+                                    { forceUpdateContent: true },
+                                );
+                                await openItemNote(
+                                    libraryID as number,
+                                    noteKey,
+                                    this.app,
+                                );
+                            } catch (err) {
+                                services.logService.error(
+                                    "Failed to create child note",
+                                    "Main",
+                                    err,
+                                );
+                                services.notificationService.notify(
+                                    "error",
+                                    "Failed to create child note.",
+                                );
+                            }
+                        });
+                });
+            }
         } else if (isLocalSourceNote) {
             menu.addItem((item) => {
                 item.setTitle("ZotFlow: Update source note")
