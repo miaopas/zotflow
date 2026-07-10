@@ -5,6 +5,13 @@ import type { AnyIDBZoteroItem } from "types/db-schema";
 import type { CitationFormat } from "settings/types";
 import type { AnnotationJSON } from "types/zotero-reader";
 
+/**
+ * Release note explaining the footnote definition template redesign.
+ * TODO: replace with the final release note URL once published.
+ */
+const FOOTNOTE_TEMPLATE_MIGRATION_URL =
+    "https://github.com/duanxianpi/obsidian-zotflow/releases/tag/1.2.0";
+
 /** A Zotero item bundled with its optional annotations for citation. */
 export interface CitationTemplateInput {
     item: AnyIDBZoteroItem;
@@ -160,7 +167,12 @@ export class CitationService {
         return { citation: `[[@${citekey}]]`, citekey };
     }
 
-    /** `[^citekey]` reference (annotation-aware) + footnote definition (item-only). */
+    /**
+     * Footnote citation. The inline reference and the definition are rendered
+     * from separate templates that share the SAME annotation context, so a
+     * template that loops over annotations can emit matching `[^marker]`
+     * references and `[^marker]:` definitions and keep them aligned itself.
+     */
     private async footnote(
         input: CitationTemplateInput,
         notePath: string,
@@ -176,18 +188,32 @@ export class CitationService {
             );
         const citation = rendered || `[^${citekey}]`;
 
-        // Definition — item-only, no annotation (one def per item)
+        // Definition — rendered with the SAME annotation context as the
+        // reference, so the template can produce one aligned definition per
+        // annotation and own the `[^marker]:` markers itself.
         const footnoteDef = await this.footnoteDef(
-            { item: input.item },
+            input,
             notePath,
+            citekey,
+            citation,
         );
         return { citation, citekey, footnoteDef };
     }
 
-    /** Render the footnote definition text via the template service. */
+    /**
+     * Render the footnote definition via the template service.
+     *
+     * If the rendered template already produces footnote definition marker(s)
+     * (`[^marker]:`), it is trusted to have handled marker alignment itself and
+     * returned verbatim. Otherwise — for legacy body-only templates — a single
+     * `[^marker]:` prefix is prepended, using the marker from the rendered
+     * reference (falling back to the citekey).
+     */
     private async footnoteDef(
         input: CitationTemplateInput,
         notePath: string,
+        citekey: string,
+        reference: string,
     ): Promise<string | undefined> {
         const rendered =
             await workerBridge.libraryTemplate.renderCitationTemplate(
@@ -196,7 +222,40 @@ export class CitationService {
                 "footnote",
             );
         if (!rendered) return undefined;
-        const citekey = input.item.citationKey || input.item.key;
-        return `[^${citekey}]: ${rendered}`;
+
+        // Template already emitted definition marker(s) → trust its alignment.
+        if (/\[\^[^\]]+\]:/.test(rendered)) {
+            return rendered;
+        }
+
+        // Legacy body-only template → prepend a single aligned marker.
+        this.warnLegacyFootnoteTemplate();
+        const marker = extractFirstFootnoteMarker(reference) ?? citekey;
+        return `[^${marker}]: ${rendered}`;
     }
+
+    /**
+     * Warn the user once per session that their footnote definition template
+     * predates the template-owned marker redesign and should be updated so it
+     * emits its own `[^marker]:` prefix (see release notes).
+     */
+    private warnLegacyFootnoteTemplate(): void {
+        services.notificationService.notify(
+            "warning",
+            "Your Footnote Definition Template is using the legacy format. Update it to include the [^marker]: prefix so definitions align with references. ",
+            {
+                text: "Learn more",
+                href: FOOTNOTE_TEMPLATE_MIGRATION_URL,
+            },
+        );
+    }
+}
+
+/**
+ * Extract the first footnote reference marker from rendered text.
+ * e.g. `foo [^smith2024-p13]` → `smith2024-p13`. Returns `null` if none found.
+ */
+function extractFirstFootnoteMarker(text: string): string | null {
+    const match = text.match(/\[\^([^\]]+)\]/);
+    return match?.[1] ?? null;
 }

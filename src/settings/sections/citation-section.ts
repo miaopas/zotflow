@@ -98,13 +98,16 @@ export class CitationSection {
             setting
                 .setName("Footnote Definition Template")
                 .setDesc(
-                    "LiquidJS template for footnote definition text appended at the end of the note. " +
-                        "Available variables: title, creators, citationKey, year, notePath, and all item metadata fields. " +
-                        "Leave empty to insert footnote reference only.",
+                    "LiquidJS template for the footnote definition(s) appended at the end of the note. " +
+                        "Annotation data is available here (same context as the Footnote Reference Template). " +
+                        "Include the [^marker]: prefix yourself so each definition aligns with its reference — " +
+                        "loop over annotations to emit one definition per annotation. " +
+                        "A template with no [^marker]: prefix reuses the reference's marker automatically. " +
+                        "Leave empty to insert the footnote reference only.",
                 )
                 .addTextArea((ta) => {
                     ta.setPlaceholder(
-                        "e.g. {{item.creators[0].name}}, *{{item.title}}*, {{item.year}}",
+                        "e.g. [^{{item.citationKey}}]: {{item.creators[0].name}}, *{{item.title}}*, {{item.year}}",
                     )
                         .setValue(this.plugin.settings.citationFootnoteTemplate)
                         .onChange(async (value) => {

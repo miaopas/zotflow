@@ -113,7 +113,7 @@ const FALLBACK_PANDOC_TEMPLATE =
 const FALLBACK_FOOTNOTE_REF_TEMPLATE =
     "[^{{ item.citationKey | default: item.key }}]";
 
-const FALLBACK_FOOTNOTE_TEMPLATE = `{%- if item.creators.length > 1 -%}
+const FALLBACK_FOOTNOTE_TEMPLATE = `[^{{ item.citationKey | default: item.key }}]: {% if item.creators.length > 1 -%}
 {{ item.creators[0].name }} et al. {%- elsif item.creators.length == 1 -%}
  {{ item.creators[0].name }} {%- else -%}
 Unknown Author {%- endif -%}, *{{ item.title }}* ({{ item.year }}).`;

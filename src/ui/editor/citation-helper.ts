@@ -122,6 +122,38 @@ export function resolveFormatFromModifiers(event: {
 }
 
 /**
+ * Split a rendered footnote-definition block into individual definitions.
+ * Each definition starts at a line beginning with `[^marker]:` and runs until
+ * the next such line (or end of string), so multi-line definition bodies are
+ * preserved. Returns `[{ marker: "", text }]` when no marker is found.
+ */
+function parseFootnoteDefinitions(
+    footnoteDef: string,
+): { marker: string; text: string }[] {
+    const re = /^\[\^([^\]]+)\]:/gm;
+    const starts: { marker: string; index: number }[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(footnoteDef)) !== null) {
+        starts.push({ marker: m[1] ?? "", index: m.index });
+    }
+    if (starts.length === 0) {
+        return [{ marker: "", text: footnoteDef.trimEnd() }];
+    }
+    const defs: { marker: string; text: string }[] = [];
+    for (let i = 0; i < starts.length; i++) {
+        const cur = starts[i];
+        if (!cur) continue;
+        const next = starts[i + 1];
+        const end = next ? next.index : footnoteDef.length;
+        defs.push({
+            marker: cur.marker,
+            text: footnoteDef.slice(cur.index, end).trimEnd(),
+        });
+    }
+    return defs;
+}
+
+/**
  * Insert a resolved citation result into an editor at a given position.
  * Handles footnote definition appending when applicable.
  */
@@ -134,16 +166,28 @@ export function insertCitationResult(
     editor.replaceRange(result.citation, pos);
 
     if (result.footnoteDef) {
-        const defPrefix = `[^${result.citekey}]:`;
+        // A rendered definition block may contain several `[^marker]:` entries
+        // (one per annotation). Append only the definitions whose marker is not
+        // already present in the document, so repeated inserts don't duplicate.
         const editorContent = editor.getValue();
-        if (
-            !editorContent.includes(`\n${defPrefix}`) &&
-            !editorContent.startsWith(defPrefix)
-        ) {
+        const missing = parseFootnoteDefinitions(result.footnoteDef).filter(
+            (def) => {
+                const prefix = def.marker
+                    ? `[^${def.marker}]:`
+                    : `[^${result.citekey}]:`;
+                return (
+                    !editorContent.includes(`\n${prefix}`) &&
+                    !editorContent.startsWith(prefix)
+                );
+            },
+        );
+
+        if (missing.length > 0) {
+            const block = missing.map((def) => def.text).join("\n");
             const lastLine = editor.lastLine();
             const lastLineText = editor.getLine(lastLine);
             const prefix = lastLineText.length > 0 ? "\n" : "";
-            editor.replaceRange(`${prefix}${result.footnoteDef}\n`, {
+            editor.replaceRange(`${prefix}${block}\n`, {
                 line: lastLine,
                 ch: lastLineText.length,
             });
