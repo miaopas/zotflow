@@ -10,7 +10,7 @@ import type { AnnotationJSON } from "types/zotero-reader";
  * TODO: replace with the final release note URL once published.
  */
 const FOOTNOTE_TEMPLATE_MIGRATION_URL =
-    "https://github.com/duanxianpi/obsidian-zotflow/releases/tag/1.2.0";
+    "https://zotflow.peterduan.dev/releases/1.2.1";
 
 /** A Zotero item bundled with its optional annotations for citation. */
 export interface CitationTemplateInput {
