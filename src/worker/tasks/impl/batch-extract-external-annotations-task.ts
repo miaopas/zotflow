@@ -3,6 +3,7 @@ import { db } from "db/db";
 import { ZotFlowError, ZotFlowErrorCode } from "utils/error";
 import SparkMD5 from "spark-md5";
 
+import type { IParentProxy } from "bridge/types";
 import type { AttachmentService } from "worker/services/attachment";
 import type { PDFProcessWorker } from "worker/services/pdf-processor";
 import type { TaskStatus } from "types/tasks";
@@ -52,11 +53,12 @@ export class BatchExtractExternalAnnotationsTask extends BaseTask {
     private extractedAnnotations: AnnotationJSON[] = [];
 
     constructor(
+        parentHost: IParentProxy,
         private attachmentService: AttachmentService,
         private pdfProcessor: PDFProcessWorker,
         private input: BatchExtractExternalAnnotationsInput,
     ) {
-        super("batch-extract-external-annotations");
+        super("batch-extract-external-annotations", parentHost);
         const count = input.items.length;
         this.displayText = `Extracting External Annotations (${count} file${count !== 1 ? "s" : ""})`;
         this.taskInput = { attachments: count };

@@ -243,7 +243,7 @@ export default class ZotFlow extends Plugin {
                         return workerBridge.createBatchNoteTask(
                             { items },
                             {},
-                            false,
+                            true,
                         );
                     },
                     "Library source note update started",

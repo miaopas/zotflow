@@ -2,6 +2,7 @@ import { BaseTask } from "../base";
 import { db } from "db/db";
 import { getAnnotationJson } from "db/annotation";
 
+import type { IParentProxy } from "bridge/types";
 import type { LibraryNoteService } from "worker/services/library-note";
 import type { AttachmentService } from "worker/services/attachment";
 import type { PDFProcessWorker } from "worker/services/pdf-processor";
@@ -40,12 +41,13 @@ export interface BatchExtractImagesInput {
  */
 export class BatchExtractImagesTask extends BaseTask {
     constructor(
+        parentHost: IParentProxy,
         private attachmentService: AttachmentService,
         private pdfProcessor: PDFProcessWorker,
         private settings: ZotFlowSettings,
         private input: BatchExtractImagesInput,
     ) {
-        super("batch-extract-images");
+        super("batch-extract-images", parentHost);
         this.displayText = "Extracting Annotation Images";
         this.taskInput = {};
         if (input.items?.length) {

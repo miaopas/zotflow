@@ -1,6 +1,7 @@
 import { BaseTask } from "../base";
 import { ZotFlowError, ZotFlowErrorCode } from "utils/error";
 
+import type { IParentProxy } from "bridge/types";
 import type { AttachmentService } from "worker/services/attachment";
 import type { TaskStatus } from "types/tasks";
 import type { IDBZoteroItem } from "types/db-schema";
@@ -25,10 +26,11 @@ export class DownloadAttachmentTask extends BaseTask {
     private blob: Blob | null = null;
 
     constructor(
+        parentHost: IParentProxy,
         private attachmentService: AttachmentService,
         private attachmentItem: IDBZoteroItem<AttachmentData>,
     ) {
-        super("download-attachment");
+        super("download-attachment", parentHost);
         const filename =
             this.attachmentItem.raw.data.filename || this.attachmentItem.key;
         this.displayText = `Downloading Attachment`;

@@ -1,10 +1,14 @@
 import { BaseTask } from "../base";
+import type { IParentProxy } from "bridge/types";
 import type { TaskStatus } from "types/tasks";
 
 /** Simulated task for development/debug — runs a configurable number of steps over a given duration. */
 export class TestTask extends BaseTask {
-    constructor(private duration: number = 5000) {
-        super("test-task");
+    constructor(
+        parentHost: IParentProxy,
+        private duration: number = 5000,
+    ) {
+        super("test-task", parentHost);
         this.displayText = "Test Task";
         this.taskInput = { duration, steps: 100 };
     }

@@ -1,5 +1,6 @@
 import { BaseTask } from "../base";
 import { db } from "db/db";
+import type { IParentProxy } from "bridge/types";
 import type { SyncService } from "worker/services/sync";
 import type { LibraryNoteService } from "worker/services/library-note";
 import type { TaskManager } from "../manager";
@@ -10,13 +11,14 @@ import type { ItemIdentifier } from "./batch-extract-images-task";
 /** Tracked background task that runs a full or library-scoped sync cycle. */
 export class SyncTask extends BaseTask {
     constructor(
+        parentHost: IParentProxy,
         private syncService: SyncService,
         private libraryId?: number,
         private taskManager?: TaskManager,
         private libraryNoteService?: LibraryNoteService,
         private settings?: ZotFlowSettings,
     ) {
-        super("sync");
+        super("sync", parentHost);
         this.displayText = libraryId
             ? `Syncing Library ${libraryId}`
             : "Syncing Libraries";

@@ -77,7 +77,7 @@ export class TaskManager {
 
     public async createTestTask(duration: number) {
         const { TestTask } = await import("./impl/test-task");
-        const task = new TestTask(duration);
+        const task = new TestTask(this.parentHost, duration);
         return this.startTask(task);
     }
 
@@ -100,6 +100,7 @@ export class TaskManager {
 
         const { SyncTask } = await import("./impl/sync-task");
         const task = new SyncTask(
+            this.parentHost,
             syncService,
             libraryId,
             this,
@@ -129,7 +130,13 @@ export class TaskManager {
     ) {
         const { BatchNoteTask } = await import("./impl/batch-note-task");
         const type = isUpdate ? "batch-update-notes" : "batch-create-notes";
-        const task = new BatchNoteTask(noteService, input, options, type);
+        const task = new BatchNoteTask(
+            this.parentHost,
+            noteService,
+            input,
+            options,
+            type,
+        );
         return this.startTask(task);
     }
 
@@ -142,6 +149,7 @@ export class TaskManager {
         const { BatchExtractImagesTask } =
             await import("./impl/batch-extract-images-task");
         const task = new BatchExtractImagesTask(
+            this.parentHost,
             attachmentService,
             pdfProcessor,
             settings,
@@ -172,6 +180,7 @@ export class TaskManager {
         const { DownloadAttachmentTask } =
             await import("./impl/download-attachment-task");
         const task = new DownloadAttachmentTask(
+            this.parentHost,
             attachmentService,
             attachmentItem,
         );
@@ -270,6 +279,7 @@ export class TaskManager {
         const { BatchExtractExternalAnnotationsTask } =
             await import("./impl/batch-extract-external-annotations-task");
         const task = new BatchExtractExternalAnnotationsTask(
+            this.parentHost,
             attachmentService,
             pdfProcessor,
             input,

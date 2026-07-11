@@ -1,6 +1,7 @@
 import { BaseTask } from "../base";
 import { db } from "db/db";
 
+import type { IParentProxy } from "bridge/types";
 import type {
     LibraryNoteService,
     UpdateOptions,
@@ -29,12 +30,13 @@ export interface BatchNoteInput {
  */
 export class BatchNoteTask extends BaseTask {
     constructor(
+        parentHost: IParentProxy,
         private noteService: LibraryNoteService,
         private input: BatchNoteInput,
         private options: UpdateOptions,
         type: TaskType = "batch-create-notes",
     ) {
-        super(type);
+        super(type, parentHost);
         const action = type === "batch-update-notes" ? "Updating" : "Creating";
         this.displayText = `${action} Notes`;
         this.taskInput = {};

@@ -8,6 +8,7 @@ export abstract class BaseTask {
     public readonly id: string;
     public readonly type: TaskType;
     public readonly createdTime: number;
+    protected parentHost: IParentProxy;
 
     protected status: TaskStatus = "pending";
     protected progress = { completed: 0, total: 0, message: "Pending..." };
@@ -33,15 +34,12 @@ export abstract class BaseTask {
         this.parentHost?.log(level, message, context, details);
     }
 
-    constructor(
-        type: TaskType,
-        id?: string,
-        private parentHost?: IParentProxy,
-    ) {
+    constructor(type: TaskType, parentHost: IParentProxy, id?: string) {
         this.id = id || uuidv4();
         this.type = type;
         this.createdTime = Date.now();
         this.displayText = type; // Default, overridden by subclasses
+        this.parentHost = parentHost;
     }
 
     public async execute(signal: AbortSignal): Promise<void> {
