@@ -33,7 +33,7 @@ Annotation data for local files is stored in a co-located `.zf.json` sidecar fil
 
 ## Editable Regions
 
-Source notes are read-only by default — but two kinds of content inside them are explicitly designed to be edited from Obsidian, and one piece (the frontmatter) is always free.
+Source notes are read-only by default — but three kinds of content inside them are explicitly designed to be edited from Obsidian, and one piece (the frontmatter) is always free.
 
 ### Frontmatter
 
@@ -45,12 +45,13 @@ The YAML frontmatter at the top of every source note is **always editable**. You
 
 ### Zotero Note Regions & Annotation Comment Regions
 
-Inside the body, two region types are wrapped in hidden HTML comment markers and treated as editable zones:
+Inside the body, three region types are wrapped in hidden HTML comment markers and treated as editable zones:
 
-| Region                 | Marker fence                                       | Default contains                               |
-| ---------------------- | -------------------------------------------------- | ---------------------------------------------- |
-| **Zotero child note**  | `<!-- ZF_NOTE_BEG_<key> -->` … `ZF_NOTE_END_<key>` | Markdown rendering of a Zotero note item       |
-| **Annotation comment** | `<!-- ZF_ANNO_BEG_<key> -->` … `ZF_ANNO_END_<key>` | The comment text you attached to an annotation |
+| Region                 | Marker fence                                             | Default contains                               |
+| ---------------------- | -------------------------------------------------------- | ---------------------------------------------- |
+| **Zotero child note**  | `<!-- ZF_NOTE_BEG_<key> -->` … `ZF_NOTE_END_<key>`       | Markdown rendering of a Zotero note item       |
+| **Annotation comment** | `<!-- ZF_ANNO_BEG_<key> -->` … `ZF_ANNO_END_<key>`       | The comment text you attached to an annotation |
+| **Persist region**     | `<!-- ZF_PERSIST_BEG_<id> -->` … `ZF_PERSIST_END_<id>`   | Whatever the template puts there — then yours  |
 
 In **Source / Live Preview** mode, each region shows a small **🔒 lock icon** at the start of its fence. Click the icon to unlock the region and edit its content directly inside the source note.
 
@@ -61,12 +62,20 @@ What happens when you save an unlocked edit:
 
 Writes are debounced (~2 s) so rapid typing produces a single update. On the next bidirectional sync, the change is pushed back to Zotero.
 
-> ⚠️ Everything _between_ the markers — the surrounding metadata, annotation excerpts, generated structure, headings — remains locked and template-driven. Only what's _inside_ the BEG/END fences (and the frontmatter) is yours to edit.
+### Persist Regions
+
+A **persist region** is local-only: what you write inside it survives every note update and is **never synced to Zotero**. Use it for a personal summary or reading notes directly in the source note. Persist regions are declared in your template with a stable id of your choosing — see the [Template Guide](template-guide.md#persist-regions-local-only-content) for syntax, id rules, and what happens to content whose region is later removed from the template (short version: it is moved to an "Orphaned persist regions" section at the bottom of the note, never deleted).
+
+In the editor, persist regions show a frame in a **muted orange** to distinguish them from the accent-colored synced regions, and they remain editable even in read-only libraries.
+
+> ⚠️ Persist content lives in the note file. If **auto-purge of trashed source notes** is enabled and the Zotero item is moved to the trash, the whole file — persist regions included — goes to the system trash with it.
+
+> ⚠️ Everything _outside_ the markers — the surrounding metadata, annotation excerpts, generated structure, headings — remains locked and template-driven. Only what's _inside_ the BEG/END fences (and the frontmatter) is yours to edit.
 
 ### Settings & Limits
 
 - **Default Editable Region Locked** (Settings → ZotFlow → General) controls whether new regions start locked (with an icon to unlock) or unlocked (with an icon to re-lock). Per-region toggles override the default for the current editor session.
-- Libraries set to **Read Only** disable the unlock icon entirely — you can read the regions, but you cannot edit them.
+- Libraries set to **Read Only** disable the unlock icon for note and annotation regions — persist regions stay editable, since their content never leaves your vault.
 - Editable regions are only surfaced in **Source** and **Live Preview** modes. Reading view keeps the note fully read-only as before.
 
 ---

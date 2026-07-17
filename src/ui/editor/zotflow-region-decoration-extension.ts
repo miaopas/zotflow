@@ -165,10 +165,12 @@ class RegionBorderPlugin {
             left: number;
             width: number;
             height: number;
+            type: string;
         }[] = [];
         for (const region of regions) {
-            // Only draw borders for NOTE regions
-            if (region.type !== "NOTE") continue;
+            // Borders for block-level regions (ANNO lives inside blockquotes
+            // and gets no frame)
+            if (region.type !== "NOTE" && region.type !== "PERSIST") continue;
 
             const topBlock = this.view.lineBlockAt(region.begFrom);
             const bottomBlock = this.view.lineBlockAt(region.endTo);
@@ -181,12 +183,13 @@ class RegionBorderPlugin {
                 left: left - pad,
                 width: width + pad * 2,
                 height,
+                type: region.type,
             });
         }
 
         // Skip DOM work if positions haven't changed
         const positionKey = positions
-            .map((p) => `${p.top},${p.left},${p.width},${p.height}`)
+            .map((p) => `${p.top},${p.left},${p.width},${p.height},${p.type}`)
             .join("|");
         if (positionKey === this.lastPositionKey) return;
         this.lastPositionKey = positionKey;
@@ -196,7 +199,7 @@ class RegionBorderPlugin {
 
         for (const p of positions) {
             const el = document.createElement("div");
-            el.className = "cm-zotflow-region-border-overlay";
+            el.className = `cm-zotflow-region-border-overlay cm-zotflow-region-border-overlay-${p.type.toLowerCase()}`;
             el.style.top = `${p.top}px`;
             el.style.left = `${p.left}px`;
             el.style.width = `${p.width}px`;
@@ -290,7 +293,9 @@ export function ZotFlowRegionDecorationExtension(
                             widget: new UnlockIconWidget(
                                 region.key,
                                 regionUnlocked,
-                                lockDisabled,
+                                // PERSIST is local-only: editable even in
+                                // read-only libraries.
+                                lockDisabled && region.type !== "PERSIST",
                             ),
                             side: 1,
                         }),
@@ -368,6 +373,11 @@ export function ZotFlowRegionDecorationExtension(
                 pointerEvents: "none",
             },
 
+            /* Persist regions: local-only — solid frame in a muted distinct hue */
+            ".cm-zotflow-region-border-overlay-persist": {
+                border: "1.5px solid color-mix(in srgb, var(--color-orange) 40%, transparent)",
+            },
+
             /* BEG marker: subtle accent background */
             ".cm-zotflow-beg-line": {
                 backgroundColor:
@@ -379,6 +389,14 @@ export function ZotFlowRegionDecorationExtension(
                 backgroundColor:
                     "color-mix(in srgb, var(--interactive-accent) 6%, transparent)",
             },
+
+            /* Persist marker lines: muted tint matching the persist frame.
+               Compound selectors out-rank the generic beg/end rules above. */
+            ".cm-zotflow-beg-line.cm-zotflow-beg-line-persist, .cm-zotflow-end-line.cm-zotflow-end-line-persist":
+                {
+                    backgroundColor:
+                        "color-mix(in srgb, var(--color-orange) 5%, transparent)",
+                },
 
             /* Marker text: small muted */
             ".cm-zotflow-tag-text": {

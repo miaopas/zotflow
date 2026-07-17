@@ -81,7 +81,7 @@ export class GeneralSection {
             setting
                 .setName("Hide Editable Region Markers")
                 .setDesc(
-                    "Hide the ZF_NOTE_BEG / ZF_NOTE_META / ZF_NOTE_END comment tags in source notes. The lock icon and region border remain visible.",
+                    "Hide the ZF_NOTE and ZF_PERSIST comment tags in source notes. The lock icon and region border remain visible.",
                 )
                 .addToggle((toggle) => {
                     toggle.setValue(

@@ -71,26 +71,21 @@ export function ZotFlowLockExtension(
 
             // If the library-id resolves to a library where note edits are
             // disallowed (read-only sync mode, or API key lacks notes/write
-            // permission), reject ALL non-frontmatter edits regardless of
-            // editable-region state.
-            if (
+            // permission), only frontmatter and local-only PERSIST regions
+            // stay editable — PERSIST content never syncs to Zotero, so
+            // library write permissions don't apply to it.
+            const readOnlyLibrary =
                 fm.libraryId !== undefined &&
-                !services.libraryCache.canEditNotes(fm.libraryId)
-            ) {
-                let allowFmOnly = true;
-                tr.changes.iterChanges((fromChange, toChange) => {
-                    if (!allowFmOnly) return;
-                    if (toChange <= fmEnd) return;
-                    allowFmOnly = false;
-                });
-                return allowFmOnly;
-            }
+                !services.libraryCache.canEditNotes(fm.libraryId);
 
             // If library-id is present, editable regions are active
             const regionsEnabled = fm.hasLibraryId;
-            const regions = regionsEnabled
+            let regions = regionsEnabled
                 ? (tr.startState.field(editableRegionsField, false) ?? [])
                 : [];
+            if (readOnlyLibrary) {
+                regions = regions.filter((r) => r.type === "PERSIST");
+            }
             const unlocked =
                 tr.startState.field(unlockedRegionsField, false) ??
                 new Set<string>();

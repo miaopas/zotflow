@@ -21,6 +21,13 @@ interface MarkerType {
 const MARKER_REGISTRY: MarkerType[] = [
     { begPrefix: "ZF_NOTE_BEG_", endPrefix: "ZF_NOTE_END_", type: "NOTE" },
     { begPrefix: "ZF_ANNO_BEG_", endPrefix: "ZF_ANNO_END_", type: "ANNO" },
+    // Persist regions: user-owned local-only blocks. Editable like the
+    // others, but NEVER synced back to Zotero (see scheduleSync).
+    {
+        begPrefix: "ZF_PERSIST_BEG_",
+        endPrefix: "ZF_PERSIST_END_",
+        type: "PERSIST",
+    },
 ];
 
 /* ================================================================ */
@@ -65,7 +72,8 @@ function buildMarkerRegex(): RegExp {
         p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
     );
     // Match: <!-- <PREFIX><KEY> -->
-    return new RegExp(`<!-- (${escaped.join("|")})(\\w+) -->`, "g");
+    // \w plus "-": persist region ids allow hyphens (Zotero keys are \w-only).
+    return new RegExp(`<!-- (${escaped.join("|")})([\\w-]+) -->`, "g");
 }
 
 const MARKER_REGEX = buildMarkerRegex();
@@ -326,6 +334,9 @@ const editableRegionSyncPlugin = ViewPlugin.fromClass(
             region: EditableRegion,
             state: EditorState,
         ) {
+            // PERSIST regions are purely local — never sync them to Zotero.
+            if (region.type === "PERSIST") return;
+
             const debounceKey = `${libraryId}-${region.key}`;
 
             // Clear previous timer for this region

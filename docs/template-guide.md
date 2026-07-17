@@ -605,10 +605,10 @@ Wraps content in the hidden HTML comment markers that ZotFlow's editor extension
 {{ value | wrap_editable: "TYPE", key }}
 ```
 
-| Argument | Type     | Description                                                       |
-| -------- | -------- | ----------------------------------------------------------------- |
-| `"TYPE"` | `string` | `"NOTE"` for Zotero child notes; `"ANNO"` for annotation comments |
-| `key`    | `string` | The Zotero item key of the note or annotation                     |
+| Argument | Type     | Description                                                                                             |
+| -------- | -------- | ------------------------------------------------------------------------------------------------------- |
+| `"TYPE"` | `string` | `"NOTE"` for Zotero child notes; `"ANNO"` for annotation comments; `"PERSIST"` for local-only persist regions |
+| `key`    | `string` | The Zotero item key of the note or annotation — or, for `"PERSIST"`, a stable id you choose yourself     |
 
 **Output:** the input string surrounded by `<!-- ZF_TYPE_BEG_key -->` / `<!-- ZF_TYPE_END_key -->` markers on their own lines.
 
@@ -658,7 +658,7 @@ These fields are **always injected** regardless of your template. Do not remove 
 
 ## Editable Regions
 
-Source notes are read-only by default, but your template can mark specific sections as **editable regions** — zones that users can unlock and edit directly inside the Obsidian editor. Editable regions are created using two custom LiquidJS filters: `html2md` and `wrap_editable`. You never write the HTML comment markers by hand.
+Source notes are read-only by default, but your template can mark specific sections as **editable regions** — zones that users can unlock and edit directly inside the Obsidian editor. Note and annotation regions are created using two custom LiquidJS filters: `html2md` and `wrap_editable` — never write their HTML comment markers by hand. Persist regions may be written either way (filter or raw comment pair).
 
 ### How It Works
 
@@ -673,12 +673,13 @@ Source notes are read-only by default, but your template can mark specific secti
 | `"TYPE"` | `"NOTE"` or `"ANNO"` | Which kind of record to update on save                                |
 | `key`    | a Zotero item key    | The note key or annotation key ZotFlow uses to look up the IDB record |
 
-Two region types are supported:
+Three region types are supported:
 
 | Type                   | Filter call                                     | What it edits on save               |
 | ---------------------- | ----------------------------------------------- | ----------------------------------- |
 | **Zotero child note**  | `\| html2md \| wrap_editable: "NOTE", note.key` | The note item in IndexedDB          |
 | **Annotation comment** | `\| wrap_editable: "ANNO", annotation.key`      | The annotation comment in IndexedDB |
+| **Persist region**     | `\| wrap_editable: "PERSIST", "your-id"`        | Nothing — the content is local-only and never synced |
 
 ### Note Regions
 
@@ -734,13 +735,57 @@ So just pipe directly to `wrap_editable`:
 
 On save, ZotFlow runs the reverse pass (`annoMd2html`): `**` → `<b>`, `*` → `<i>`, `<sub>`/`<sup>` kept, escaped `\<`/`\>` unescaped. Any other HTML is stripped before writing back to IndexedDB.
 
+### Persist Regions (Local-Only Content)
+
+A **persist region** is a block that belongs to *you*, not to Zotero: whatever you write inside it survives every source-note re-render, and it is **never synced to Zotero**. The classic use case is a personal summary section directly in the source note, without creating an item note.
+
+Declare one in your template either as a raw comment pair:
+
+```markdown
+## My Summary
+<!-- ZF_PERSIST_BEG_summary -->
+
+<!-- ZF_PERSIST_END_summary -->
+```
+
+or with the filter (equivalent output; handy for default content):
+
+```liquid
+## My Summary
+{{ "Write your thoughts here…" | wrap_editable: "PERSIST", "summary" }}
+```
+
+**Id rules:**
+
+- You pick the id (`summary`, `reading-todo`, …). Allowed characters: letters, digits, `_`, `-` (max 64).
+- Ids must be **unique within a note** and **stable across renders** — the id is how ZotFlow finds the region's new home on each update. Don't generate ids from loop variables unless they're stable Zotero keys.
+- Keep at least one blank line between the BEG and END markers, or the editor cannot place a cursor inside the region.
+
+**On every note update** ZotFlow extracts your persist content before re-rendering and splices it back between the matching markers afterwards. Marker problems (missing id, duplicate ids, unmatched or nested markers) make the note **refuse to update** with an error pointing at the offending line — nothing is ever overwritten on a parse failure.
+
+**Orphans:** if you remove or rename a region id in the template, existing content has no home anymore. It is *not* deleted — it moves to the bottom of the note into a sentinel-bounded section:
+
+```markdown
+<!-- ZF_PERSIST_ORPHAN_BEG -->
+## Orphaned persist regions
+
+**`summary`**
+…your content…
+<!-- ZF_PERSIST_ORPHAN_END -->
+```
+
+You get one warning notice when this happens (details in the log). The section is copied through verbatim on later updates; cleaning it up is up to you:
+
+- To delete a single region's content: unlock it and clear the text — an emptied region disappears on the next update.
+- To edit or remove orphaned content: set `zotflow-locked: false` in the note's frontmatter (re-enable afterwards), or use any external tool — the sentinels make the section easy to target with a script, and editor locking does not apply outside Obsidian.
+
 ### How the Editor Renders Regions
 
 - In **Source / Live Preview** mode: each region shows a **🔒 lock icon** at the start of its BEG marker line. Click to unlock and edit. A **🔓 re-lock icon** appears at the END marker line.
 - In **Reading view**: fully read-only, same as the rest of the note.
 - The marker lines themselves can be **hidden** with **Settings → ZotFlow → General → Hide Editable Region Markers**.
 - **Default Editable Region Locked** (Settings → ZotFlow → General): whether regions start locked or unlocked when you open the note. Default: locked.
-- Libraries set to **Read Only** disable the unlock icon entirely.
+- Libraries set to **Read Only** disable the unlock icon for note and annotation regions. Persist regions stay editable — their content is local-only, so library write permissions don't apply.
 
 ---
 
