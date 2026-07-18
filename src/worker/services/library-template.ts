@@ -237,6 +237,9 @@ export class LibraryTemplateService {
                     this.settings.annotationImageFolder.replace(/\/$/, "") ||
                     undefined,
                 strictLineBreaks: vaultConfig.strictLineBreaks,
+                // Always on: display-only anchors, unconditionally
+                // stripped on save — no risk for a setting to guard.
+                linkCitationSpans: true,
             };
             let md = await this.convertService.html2md(input, opts);
             // Display native zotero:// links as ZotFlow links. Runs on the

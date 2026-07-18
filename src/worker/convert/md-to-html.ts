@@ -17,6 +17,7 @@ import { visit } from "unist-util-visit";
 import { visitParents } from "unist-util-visit-parents";
 
 import { NOTE_META_PREFIX } from "./html-to-md";
+import { stripCitationSpanLinks } from "./citation-span-links";
 
 import type { CompileResults, Processor } from "unified";
 import type { Root as HRoot, RootContent } from "hast";
@@ -376,6 +377,11 @@ export async function md2htmlWithProcessors(
         /<span data-zf-task="(x|open)"><\/span>/g,
         (_m, state: string) => (state === "x" ? "[x] " : "[ ] "),
     );
+
+    // Strip the display-only zotflow anchors injected into annotation/
+    // citation spans by html2md. Unconditional: derived links must never
+    // reach IDB/Zotero, regardless of the display setting's state.
+    html = stripCitationSpanLinks(html);
 
     // Restore the wrapper div with original metadata attributes
     if (wrapperAttrs) {

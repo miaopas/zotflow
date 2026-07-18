@@ -61,6 +61,9 @@ export class ItemNoteService {
                 this.settings.annotationImageFolder.replace(/\/$/, "") ||
                 undefined,
             strictLineBreaks: vaultConfig.strictLineBreaks,
+            // Always on: display-only anchors, unconditionally stripped
+            // on save — there is no risk for a setting to guard.
+            linkCitationSpans: true,
         });
 
         // Display native zotero:// links as ZotFlow links. Markdown-side on

@@ -19,6 +19,7 @@ import { toText } from "hast-util-to-text";
 import { visitParents } from "unist-util-visit-parents";
 import { visit } from "unist-util-visit";
 import { h } from "hastscript";
+import { wrapCitationSpanLinks } from "./citation-span-links";
 
 import type { CompileResults, Processor } from "unified";
 import type { Node } from "unist";
@@ -726,6 +727,11 @@ export interface Html2MdOptions {
      * `\n` is treated as a soft break and would be lost).
      */
     strictLineBreaks?: boolean;
+    /**
+     * Wrap Zotero annotation/citation spans with clickable zotflow anchors
+     * (see citation-span-links.ts). Display-only — md2html strips them.
+     */
+    linkCitationSpans?: boolean;
 }
 
 /** Marker prefix for the wrapper-div metadata comment (`<!-- ZF_NOTE_META ... -->`). */
@@ -749,6 +755,13 @@ export async function html2mdWithProcessors(
     options?: Html2MdOptions,
 ): Promise<string> {
     const { tree, wrapperAttrs } = parseNoteHtml(html, rehypeParser);
+
+    // Make Zotero annotation/citation spans clickable in Obsidian by
+    // wrapping their contents with zotflow anchors. The spans (and their
+    // payloads) stay intact; md2html strips the anchors on the way back.
+    if (options?.linkCitationSpans) {
+        wrapCitationSpanLinks(tree as any);
+    }
 
     const remark = (await unified()
         .use(rehypeRemark, {

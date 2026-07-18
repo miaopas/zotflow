@@ -2120,6 +2120,27 @@
 }
 
 /* ================================================================ */
+/*  Citation / Annotation Span Links                                */
+/* ================================================================ */
+
+/* Anchors injected into Zotero highlight/underline/citation spans
+   (see citation-span-links.ts). Long quoted passages shouldn't read
+   as links — inherit the text look, reveal affordance on hover. */
+a.zotflow-span-link {
+    color: inherit;
+    text-decoration: none;
+    /* Suppress Obsidian's external-link icon decoration */
+    background-image: none !important;
+    padding-inline-end: 0 !important;
+}
+
+a.zotflow-span-link:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--interactive-accent);
+    cursor: pointer;
+}
+
+/* ================================================================ */
 /*  Editable Region Markers                                         */
 /* ================================================================ */
 
