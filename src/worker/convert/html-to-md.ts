@@ -808,7 +808,12 @@ export async function html2mdWithProcessors(
  * `](…)` destinations only — a `\&` in prose stays untouched.
  */
 function unescapeAmpersandInDestinations(md: string): string {
-    return md.replace(/\]\(((?:\\.|[^()\s])+)\)/g, (match, dest: string) =>
+    if (!md.includes("\\&")) return md;
+    // NB: the destination alternatives must be disjoint (backslash is
+    // excluded from the char class) — an ambiguous `(?:\\.|[^()\s])+`
+    // backtracks exponentially on `](` followed by a run of backslashes
+    // with no closing paren.
+    return md.replace(/\]\(((?:[^()\s\\]|\\.)+)\)/g, (match, dest: string) =>
         dest.includes("\\&") ? `](${dest.replace(/\\&/g, "&")})` : match,
     );
 }
