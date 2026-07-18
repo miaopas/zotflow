@@ -121,10 +121,13 @@ export function ZotFlowLockExtension(
                             isUnlocked &&
                             fromChange >= r.from &&
                             toChange <= r.to &&
-                            // Protect BEG marker line
-                            !(fromChange <= r.begTo && toChange >= r.begFrom) &&
-                            // Protect END marker line
-                            !(fromChange <= r.endTo && toChange >= r.endFrom)
+                            // Protect the BEG/END marker text itself. Strict
+                            // overlap: a point insertion at a marker boundary
+                            // sits in the content (inline/zero-width regions
+                            // start right at the marker edge), while any edit
+                            // that consumes marker characters is rejected.
+                            !(fromChange < r.begTo && toChange > r.begFrom) &&
+                            !(fromChange < r.endTo && toChange > r.endFrom)
                         );
                     });
 

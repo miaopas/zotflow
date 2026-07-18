@@ -219,6 +219,17 @@ export class LibraryTemplateService {
                 if (readOnlyKeys && readOnlyKeys.has(`${type}:${key}`)) {
                     return input;
                 }
+                // ANNO with single-line content: inline markers, so the
+                // whole region fits on one blockquote line. NOTE and
+                // PERSIST always use the block form (the worker-side
+                // persist parser requires markers on their own lines).
+                if (
+                    type === "ANNO" &&
+                    typeof input === "string" &&
+                    !input.includes("\n")
+                ) {
+                    return `<!-- ZF_${type}_BEG_${key} -->${input}<!-- ZF_${type}_END_${key} -->`;
+                }
                 return `<!-- ZF_${type}_BEG_${key} -->\n${input}\n<!-- ZF_${type}_END_${key} -->`;
             },
         );

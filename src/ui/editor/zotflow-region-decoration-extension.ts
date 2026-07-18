@@ -315,14 +315,17 @@ export function ZotFlowRegionDecorationExtension(
                         }),
                     });
 
-                    // END marker: accent background
-                    ranges.push({
-                        from: endLine.from,
-                        to: endLine.from,
-                        deco: Decoration.line({
-                            class: `cm-zotflow-end-line cm-zotflow-end-line-${typeClass}`,
-                        }),
-                    });
+                    // END marker: accent background (skip when the region is
+                    // inline — BEG already decorated this line)
+                    if (endLine.from !== begLine.from) {
+                        ranges.push({
+                            from: endLine.from,
+                            to: endLine.from,
+                            deco: Decoration.line({
+                                class: `cm-zotflow-end-line cm-zotflow-end-line-${typeClass}`,
+                            }),
+                        });
+                    }
                     ranges.push({
                         from: region.endFrom,
                         to: region.endTo,
