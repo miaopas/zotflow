@@ -192,19 +192,87 @@ export async function zotflowToZoteroLinks(
 /*  Zotero → ZotFlow (inbound, before html2md display)              */
 /* ================================================================ */
 
+/**
+ * Single scan for zotero URLs in markdown/HTML text. The first
+ * alternative consumes markdown autolinks (`<zotero://…>`) atomically —
+ * they need special replacement (see below); the second captures bare
+ * URLs (inside `href="…"`, markdown `(…)` destinations, or plain text).
+ */
+const ZOTERO_URL_SCAN_RE = /<(zotero:\/\/[^<>\s]+)>|zotero:\/\/[^"'\s<>)]+/g;
+
+// Anchored grammars — a URL either matches in full or is left untouched,
+// so unexpected deeper paths can never be partially converted.
 // `open` is Zotero 7's generalization of `open-pdf` (any reader type);
 // both route to the same handler, so they share conversion semantics.
-const ZOTERO_LINK_RE =
-    /zotero:\/\/(select|open-pdf|open)\/(library|groups\/\d+)\/items\/([A-Z0-9]+)(\?[^"'\s<>)]*)?/g;
+const STANDARD_ZOTERO_URL_RE =
+    /^zotero:\/\/(select|open-pdf|open)\/(library|groups\/\d+)\/items\/([A-Z0-9]+)(\?.*)?$/;
 
 // Better Notes plugin note-to-note links: zotero://note/<u|internal-group-id>/<KEY>/?params#hash
 // Only the personal (`u`) form is convertible — the numeric segment is a
 // Zotero-INTERNAL library id that cannot be mapped to a web groupID.
 // Anchor params (line/section/hash) are dropped: item-level is enough.
-// The trailing lookahead rejects unexpected deeper paths outright —
-// a partial match would convert the prefix and leave the tail dangling.
-const BETTER_NOTES_LINK_RE =
-    /zotero:\/\/note\/(u|\d+)\/([A-Z0-9]+)\/?(?:\?[^"'\s<>)#]*)?(?:#[^"'\s<>)]*)?(?![\w/])/g;
+const BETTER_NOTES_URL_RE =
+    /^zotero:\/\/note\/(u|\d+)\/([A-Z0-9]+)\/?(\?[^#]*)?(#.*)?$/;
+
+/** Convert one full zotero URL, or return null when it must stay as-is. */
+async function convertZoteroUrl(
+    url: string,
+    resolver: NoteLinkResolver,
+): Promise<string | null> {
+    const bn = BETTER_NOTES_URL_RE.exec(url);
+    if (bn) {
+        const [, prefix, key] = bn as unknown as [string, string, string];
+        if (prefix !== "u") return null; // internal group id → untouched
+        const libraryID = await resolver.getPersonalLibraryID();
+        if (libraryID === null) return null;
+        return `obsidian://zotflow?type=open-item-note&libraryID=${libraryID}&key=${key}`;
+    }
+
+    const std = STANDARD_ZOTERO_URL_RE.exec(url);
+    if (!std) return null;
+    const [, action, prefix, key, rawQuery] = std as unknown as [
+        string,
+        string,
+        string,
+        string,
+        string | undefined,
+    ];
+
+    let libraryID: number | null;
+    if (prefix === "library") {
+        libraryID = await resolver.getPersonalLibraryID();
+    } else {
+        libraryID = Number(prefix.slice("groups/".length));
+    }
+    if (libraryID === null || !Number.isFinite(libraryID)) return null;
+
+    if (action === "select") {
+        return `obsidian://zotflow?type=open-note&libraryID=${libraryID}&key=${key}`;
+    }
+
+    // open-pdf / open
+    const params = parseQuery(rawQuery ? rawQuery.slice(1) : "");
+    const known = new Set(["annotation", "page"]);
+    for (const name of params.keys()) {
+        if (!known.has(name)) return null; // e.g. ?sel= / ?cfi= → keep
+    }
+
+    const annotation = params.get("annotation");
+    if (annotation) {
+        return `obsidian://zotflow?type=open-annotation&libraryID=${libraryID}&key=${annotation}`;
+    }
+
+    const page = params.get("page");
+    if (page !== undefined) {
+        if (!/^\d+$/.test(page)) return null;
+        const navigation = encodeURIComponent(
+            JSON.stringify({ pageIndex: parseInt(page, 10) - 1 }),
+        );
+        return `obsidian://zotflow?type=open-attachment&libraryID=${libraryID}&key=${key}&navigation=${navigation}`;
+    }
+
+    return `obsidian://zotflow?type=open-attachment&libraryID=${libraryID}&key=${key}`;
+}
 
 export async function zoteroToZotflowLinks(
     html: string,
@@ -212,65 +280,18 @@ export async function zoteroToZotflowLinks(
 ): Promise<string> {
     if (!html.includes("zotero://")) return html;
 
-    // Better Notes note links → open-note (personal library only).
-    const converted = await replaceAsync(
-        html,
-        BETTER_NOTES_LINK_RE,
-        async (m) => {
-            const [link, prefix, key] = m as unknown as [
-                string,
-                string,
-                string,
-            ];
-            if (prefix !== "u") return link; // internal group id → untouched
-            const libraryID = await resolver.getPersonalLibraryID();
-            if (libraryID === null) return link;
-            return `obsidian://zotflow?type=open-item-note&libraryID=${libraryID}&key=${key}`;
-        },
-    );
-
-    return replaceAsync(converted, ZOTERO_LINK_RE, async (m) => {
-        const [link, action, prefix, key, rawQuery] = m as unknown as [
-            string,
-            string,
-            string,
-            string,
-            string | undefined,
-        ];
-
-        let libraryID: number | null;
-        if (prefix === "library") {
-            libraryID = await resolver.getPersonalLibraryID();
-        } else {
-            libraryID = Number(prefix.slice("groups/".length));
+    return replaceAsync(html, ZOTERO_URL_SCAN_RE, async (m) => {
+        const autolinkInner = m[1];
+        if (autolinkInner !== undefined) {
+            // Markdown autolink `<zotero://…>` — html2md emits this form
+            // when a link's visible text equals its URL (e.g. Zotero's
+            // "Copy Link" pastes). Substituting only the URL would leave
+            // the raw zotflow URL as the link's visible text, so emit a
+            // resource link keeping the original zotero URL as the text.
+            const converted = await convertZoteroUrl(autolinkInner, resolver);
+            return converted ? `[${autolinkInner}](${converted})` : m[0];
         }
-        if (libraryID === null || !Number.isFinite(libraryID)) return link;
-
-        if (action === "select") {
-            return `obsidian://zotflow?type=open-note&libraryID=${libraryID}&key=${key}`;
-        }
-
-        // open-pdf
-        const params = parseQuery(rawQuery ? rawQuery.slice(1) : "");
-        const known = new Set(["annotation", "page"]);
-        for (const name of params.keys()) {
-            if (!known.has(name)) return link; // e.g. ?sel= / ?cfi= → keep
-        }
-
-        const annotation = params.get("annotation");
-        if (annotation) {
-            return `obsidian://zotflow?type=open-annotation&libraryID=${libraryID}&key=${annotation}`;
-        }
-
-        const page = params.get("page");
-        if (page !== undefined) {
-            if (!/^\d+$/.test(page)) return link;
-            const navigation = encodeURIComponent(
-                JSON.stringify({ pageIndex: parseInt(page, 10) - 1 }),
-            );
-            return `obsidian://zotflow?type=open-attachment&libraryID=${libraryID}&key=${key}&navigation=${navigation}`;
-        }
-
-        return `obsidian://zotflow?type=open-attachment&libraryID=${libraryID}&key=${key}`;
+        const converted = await convertZoteroUrl(m[0], resolver);
+        return converted ?? m[0];
     });
 }

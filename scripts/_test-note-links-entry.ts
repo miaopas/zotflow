@@ -298,6 +298,41 @@ test("inbound: unexpected deeper note path left fully untouched", async () => {
     );
 });
 
+test("inbound: deeper standard path left fully untouched", async () => {
+    const html = "zotero://select/library/items/ITEM1/extra";
+    assertEq(
+        await zoteroToZotflowLinks(html, resolver),
+        html,
+        "no partial conversion",
+    );
+});
+
+test("inbound: autolink becomes a resource link keeping zotero text", async () => {
+    // html2md emits <url> when a link's text equals its URL (Zotero
+    // "Copy Link" pastes) — the visible text must NOT become a raw
+    // zotflow URL.
+    const md = "<zotero://open-pdf/library/items/KPM4CY9J?annotation=KRVQWZXH>";
+    assertEq(
+        await zoteroToZotflowLinks(md, resolver),
+        `[zotero://open-pdf/library/items/KPM4CY9J?annotation=KRVQWZXH](${zf("type=open-annotation&libraryID=1&key=KRVQWZXH")})`,
+        "resource link with original zotero URL as text",
+    );
+});
+
+test("inbound: unconvertible autolink stays an autolink", async () => {
+    const md = "<zotero://open-pdf/library/items/ATT1?cfi=x>";
+    assertEq(await zoteroToZotflowLinks(md, resolver), md, "untouched");
+});
+
+test("inbound: Better Notes autolink converts too", async () => {
+    const md = "<zotero://note/u/NOTE1/?line=3>";
+    assertEq(
+        await zoteroToZotflowLinks(md, resolver),
+        `[zotero://note/u/NOTE1/?line=3](${zf("type=open-item-note&libraryID=1&key=NOTE1")})`,
+        "BN autolink → resource link",
+    );
+});
+
 test("outbound: open-item-note (personal) emits Better Notes form", async () => {
     const html = zf("type=open-item-note&libraryID=1&key=NOTE1");
     assertEq(
