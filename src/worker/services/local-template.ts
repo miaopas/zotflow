@@ -25,10 +25,8 @@ zotflow-local-attachment: [[{{ path }}]]
 {%- else -%}
 > > {{ annotation.text | replace: newline, quote_string_2 }}
 {%- endif -%}
-{%- if annotation.comment != "" -%}
 >
-> {{ annotation.comment | replace: newline, quote_string }}
-{%- endif -%}
+> {{ annotation.comment | wrap_editable: "ANNO", annotation.key | replace: newline, quote_string }}
 {%- if annotation.tags and annotation.tags.length > 0 -%}
 >
 > {% for t in annotation.tags %}#{{ t.tag | replace: " ", "\_" }}{% unless forloop.last %} {% endunless %}{% endfor %}
@@ -65,6 +63,26 @@ export class LocalTemplateService {
             };
             return encodeURIComponent(JSON.stringify(navInfo));
         });
+
+        this.engine.registerFilter(
+            "wrap_editable",
+            /**
+             * Wrap content in ZF_<TYPE>_BEG/END markers so the CM6 editable
+             * region extension can mount an editable zone. Mirrors the
+             * library-template filter: consults the per-render
+             * `__zfReadOnlyKeys` set so read-only annotations (external,
+             * extracted from the PDF itself) render as plain locked text.
+             */
+            function (this: any, input: string, type: string, key: string) {
+                if (!type || !key) return input;
+                const readOnlyKeys: Set<string> | undefined =
+                    this?.context?.environments?.__zfReadOnlyKeys;
+                if (readOnlyKeys && readOnlyKeys.has(`${type}:${key}`)) {
+                    return input;
+                }
+                return `<!-- ZF_${type}_BEG_${key} -->\n${input}\n<!-- ZF_${type}_END_${key} -->`;
+            },
+        );
     }
 
     updateSettings(newSettings: ZotFlowSettings) {
@@ -206,6 +224,13 @@ export class LocalTemplateService {
             annotations: processedAnnotations,
         };
 
+        // Read-only annotations must not become editable regions —
+        // consumed by the wrap_editable filter.
+        const readOnlyKeys = new Set<string>();
+        for (const anno of processedAnnotations) {
+            if (anno.readOnly) readOnlyKeys.add(`ANNO:${anno.key}`);
+        }
+
         return {
             item,
             settings: {
@@ -213,6 +238,7 @@ export class LocalTemplateService {
                 annotationImageFolder:
                     this.settings.annotationImageFolder.replace(/\/$/, ""),
             },
+            __zfReadOnlyKeys: readOnlyKeys,
         };
     }
 

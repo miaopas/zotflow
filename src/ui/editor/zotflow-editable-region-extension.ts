@@ -6,7 +6,10 @@ import {
     type Text,
 } from "@codemirror/state";
 import { ViewPlugin, type ViewUpdate } from "@codemirror/view";
+import { TFile } from "obsidian";
 import { workerBridge } from "bridge";
+import { services } from "services/services";
+import { LocalDataManager } from "ui/reader/local-data-manager";
 
 /* ================================================================ */
 /*  Marker Registry                                                 */
@@ -284,6 +287,29 @@ function getLibraryId(doc: Text): number | null {
     return match?.[1] ? Number(match[1]) : null;
 }
 
+/** Extract the local attachment path from `zotflow-local-attachment: "[[path]]"`. */
+export function getLocalAttachmentPath(doc: Text): string | null {
+    if (doc.sliceString(0, 3) !== "---") return null;
+
+    const head = doc.sliceString(0, 10000);
+    const fmMatch = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(
+        head,
+    );
+    if (!fmMatch) return null;
+
+    const match =
+        /^zotflow-local-attachment:\s*["']?\[\[(.+?)\]\]["']?\s*$/m.exec(
+            fmMatch[0],
+        );
+
+    return match?.[1] ?? null;
+}
+
+/** Where region edits should be saved: a Zotero library or a local sidecar. */
+type SyncTarget =
+    | { kind: "zotero"; libraryId: number }
+    | { kind: "local"; attachmentPath: string };
+
 /* ================================================================ */
 /*  ViewPlugin — sync edits to Worker                               */
 /* ================================================================ */
@@ -312,32 +338,48 @@ const editableRegionSyncPlugin = ViewPlugin.fromClass(
             );
             if (!isUserEdit) return;
 
-            const libraryId = getLibraryId(update.state.doc);
-            if (libraryId === null) return;
-
             const regions = update.state.field(editableRegionsField, false);
             if (!regions || regions.length === 0) return;
+
+            const libraryId = getLibraryId(update.state.doc);
+            let target: SyncTarget | null = null;
+            if (libraryId !== null) {
+                target = { kind: "zotero", libraryId };
+            } else {
+                const attachmentPath = getLocalAttachmentPath(
+                    update.state.doc,
+                );
+                if (attachmentPath !== null) {
+                    target = { kind: "local", attachmentPath };
+                }
+            }
+            if (!target) return;
 
             // Find which regions were touched by the changes
             update.changes.iterChangedRanges((fromA, toA) => {
                 for (const region of regions) {
                     // Check if the change range overlaps this region's editable zone
                     if (fromA <= region.to && toA >= region.from) {
-                        this.scheduleSync(libraryId, region, update.state);
+                        this.scheduleSync(target, region, update.state);
                     }
                 }
             });
         }
 
         private scheduleSync(
-            libraryId: number,
+            target: SyncTarget,
             region: EditableRegion,
             state: EditorState,
         ) {
-            // PERSIST regions are purely local — never sync them to Zotero.
+            // PERSIST regions are purely local — never sync them anywhere.
             if (region.type === "PERSIST") return;
+            // Local notes only carry ANNO regions.
+            if (target.kind === "local" && region.type !== "ANNO") return;
 
-            const debounceKey = `${libraryId}-${region.key}`;
+            const debounceKey =
+                target.kind === "zotero"
+                    ? `${target.libraryId}-${region.key}`
+                    : `${target.attachmentPath}-${region.key}`;
 
             // Clear previous timer for this region
             const existing = this.debouncers.get(debounceKey);
@@ -349,6 +391,7 @@ const editableRegionSyncPlugin = ViewPlugin.fromClass(
                 this.debouncers.delete(debounceKey);
 
                 if (region.type === "NOTE") {
+                    if (target.kind !== "zotero") return;
                     // NOTE regions: include meta comment for wrapper-div
                     // attributes reconstruction, then convert MD → HTML.
                     const syncFrom = region.metaFrom ?? region.from;
@@ -358,7 +401,7 @@ const editableRegionSyncPlugin = ViewPlugin.fromClass(
                     );
                     workerBridge.itemNote
                         .updateNoteContent(
-                            libraryId,
+                            target.libraryId,
                             region.key,
                             noteContent,
                             "editor",
@@ -371,22 +414,61 @@ const editableRegionSyncPlugin = ViewPlugin.fromClass(
                     //   > <!-- ZF_ANNO_BEG_KEY -->
                     //   > comment text here
                     //   > <!-- ZF_ANNO_END_KEY -->
-                    // Strip the leading `> ` prefix from each line before
-                    // converting MD → restricted HTML for the annotation comment.
+                    // Strip the leading `> ` prefix from each line first.
                     const content = state.doc.sliceString(
                         region.from,
                         region.to,
                     );
                     const stripped = content.replace(/^>[ \t]?/gm, "");
-                    workerBridge.annotation
-                        .updateAnnotationComment(
-                            libraryId,
-                            region.key,
-                            stripped,
-                        )
-                        .catch(() => {
-                            // Background sync — errors logged by worker
-                        });
+
+                    if (target.kind === "zotero") {
+                        // MD → restricted HTML happens worker-side.
+                        workerBridge.annotation
+                            .updateAnnotationComment(
+                                target.libraryId,
+                                region.key,
+                                stripped,
+                            )
+                            .catch(() => {
+                                // Background sync — errors logged by worker
+                            });
+                    } else {
+                        // Local attachment: comments live in the .zf.json
+                        // sidecar as plain markdown — update it directly on
+                        // the main thread, without re-rendering the note
+                        // (the note already contains the new text).
+                        // Undo the template's blockquote-safety escaping
+                        // (sanitizeQuotesString: `>` → `\>`) so repeated
+                        // round-trips don't accumulate backslashes.
+                        const unescaped = stripped.replace(/\\>/g, ">");
+
+                        const file = services.app.vault.getAbstractFileByPath(
+                            target.attachmentPath,
+                        );
+                        if (!(file instanceof TFile)) return;
+
+                        new LocalDataManager(file)
+                            .updateAnnotationCommentFromNote(
+                                region.key,
+                                unescaped,
+                            )
+                            .then((changed) => {
+                                if (changed) {
+                                    // Let an open local reader refresh its cache.
+                                    services.taskMonitor.localAnnotationChanged.emit(
+                                        target.attachmentPath,
+                                        region.key,
+                                    );
+                                }
+                            })
+                            .catch((e) => {
+                                services.logService.error(
+                                    "Failed to save local annotation comment from note",
+                                    "ZotFlowEditableRegion",
+                                    e,
+                                );
+                            });
+                    }
                 }
             }, DEBOUNCE_DELAY);
 

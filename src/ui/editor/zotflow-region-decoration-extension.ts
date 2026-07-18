@@ -39,6 +39,17 @@ function hasLibraryId(state: EditorState): boolean {
     return getLibraryId(state) !== undefined;
 }
 
+/** Check whether this is a local attachment source note. */
+function isLocalNote(state: EditorState): boolean {
+    if (state.doc.sliceString(0, 3) !== "---") return false;
+    const head = state.doc.sliceString(0, 10000);
+    const fmMatch = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(
+        head,
+    );
+    if (!fmMatch) return false;
+    return /^zotflow-local-attachment:/m.test(fmMatch[0]);
+}
+
 /* ================================================================ */
 /*  Unlock icon widget                                              */
 /* ================================================================ */
@@ -132,8 +143,8 @@ class RegionBorderPlugin {
     }
 
     private rebuild() {
-        // No library-id → not a ZotFlow source note, skip border overlays
-        if (!hasLibraryId(this.view.state)) {
+        // Not a ZotFlow source note (library or local) → skip border overlays
+        if (!hasLibraryId(this.view.state) && !isLocalNote(this.view.state)) {
             if (this.overlays.length > 0) {
                 for (const el of this.overlays) el.remove();
                 this.overlays = [];
@@ -241,9 +252,10 @@ export function ZotFlowRegionDecorationExtension(
         EditorView.decorations.compute(
             [editableRegionsField, unlockedRegionsField],
             (state) => {
-                // No library-id → not a ZotFlow source note, skip all decorations
+                // Not a ZotFlow source note (library or local) → skip all decorations
                 const libraryId = getLibraryId(state);
-                if (libraryId === undefined) return Decoration.none;
+                const local = libraryId === undefined && isLocalNote(state);
+                if (libraryId === undefined && !local) return Decoration.none;
 
                 const regions = state.field(editableRegionsField, false);
                 if (!regions) return Decoration.none;
@@ -252,7 +264,9 @@ export function ZotFlowRegionDecorationExtension(
                     state.field(unlockedRegionsField, false) ??
                     new Set<string>();
 
+                // Local notes have no library permissions — never disabled.
                 const lockDisabled =
+                    libraryId !== undefined &&
                     !services.libraryCache.canEditNotes(libraryId);
 
                 const ranges: {

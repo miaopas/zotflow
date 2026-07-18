@@ -5,6 +5,11 @@ import type { NotePathService } from "./note-path";
 import type { AnnotationJSON } from "types/zotero-reader";
 import type { TFileWithoutParentAndVault } from "types/zotflow";
 import { ZotFlowError, ZotFlowErrorCode } from "utils/error";
+import {
+    extractPersistRegions,
+    reinsertPersistRegions,
+    type PersistExtract,
+} from "utils/persist-regions";
 
 // Legacy regex patterns kept for migration fallback
 const OZRP_REGEX =
@@ -15,6 +20,11 @@ const ZOTFLOW_REGEX =
 /** CRUD service for local vault file notes (PDF/EPUB opened locally). */
 export class LocalNoteService {
     private debouncers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+
+    // Notes that gained orphaned persist regions since the last Notice
+    // (same aggregation pattern as LibraryNoteService).
+    private orphanReports: Map<string, string[]> = new Map();
+    private orphanNoticeTimer: ReturnType<typeof setTimeout> | null = null;
 
     constructor(
         private settings: ZotFlowSettings,
@@ -43,6 +53,37 @@ export class LocalNoteService {
             clearTimeout(timer);
         }
         this.debouncers.clear();
+        if (this.orphanNoticeTimer !== null) {
+            clearTimeout(this.orphanNoticeTimer);
+            this.orphanNoticeTimer = null;
+        }
+    }
+
+    /**
+     * Record newly orphaned persist regions for a note and schedule a
+     * single debounced summary Notice covering the whole update cycle.
+     */
+    private reportNewOrphans(path: string, orphanIds: string[]) {
+        this.parentHost.log(
+            "warn",
+            `Persist region(s) orphaned in ${path}: ${orphanIds.join(", ")} — content moved to the "Orphaned persist regions" section`,
+            "LocalNoteService",
+        );
+        this.orphanReports.set(path, orphanIds);
+
+        if (this.orphanNoticeTimer !== null) {
+            clearTimeout(this.orphanNoticeTimer);
+        }
+        this.orphanNoticeTimer = setTimeout(() => {
+            this.orphanNoticeTimer = null;
+            const noteCount = this.orphanReports.size;
+            this.orphanReports.clear();
+            if (noteCount === 0) return;
+            this.parentHost.notify(
+                "warning",
+                `${noteCount} note(s) have orphaned persist regions — content was preserved at the bottom of each note (see log)`,
+            );
+        }, 2000);
     }
 
     /**
@@ -382,7 +423,14 @@ export class LocalNoteService {
             {},
         );
 
-        await this.parentHost.writeTextFile(notePath, content);
+        // No old content on create, but still validate the render's persist
+        // markers (throws on template errors; a no-op splice otherwise).
+        const spliced = reinsertPersistRegions(content, {
+            regions: [],
+            orphanSectionInner: null,
+        });
+
+        await this.parentHost.writeTextFile(notePath, spliced.content);
         this.parentHost.log(
             "info",
             `Created note: ${notePath}`,
@@ -395,8 +443,32 @@ export class LocalNoteService {
     private async performUpdate(
         localAttachment: TFileWithoutParentAndVault,
         annotations: AnnotationJSON[],
-        fileCheck: any, // Ideally typed as { exists: boolean, path: string, frontmatter: any }
+        fileCheck: Awaited<ReturnType<IParentProxy["checkFile"]>>,
     ) {
+        // Persist regions: pull user-owned blocks out of the current file
+        // before the full-content overwrite. A parse failure refuses the
+        // update — the file stays untouched until the user repairs it.
+        const oldContent = await this.parentHost.readTextFile(fileCheck.path);
+        if (oldContent === null || oldContent === undefined) {
+            throw new ZotFlowError(
+                ZotFlowErrorCode.FILE_OPEN_FAILED,
+                "LocalNoteService",
+                `Could not read ${fileCheck.path} before update — refused to overwrite blindly`,
+            );
+        }
+
+        let extracted: PersistExtract;
+        try {
+            extracted = extractPersistRegions(oldContent);
+        } catch (e) {
+            throw new ZotFlowError(
+                ZotFlowErrorCode.PARSE_ERROR,
+                "LocalNoteService",
+                `Invalid persist markers in ${fileCheck.path}: ${(e as Error).message}. Update refused until the file is fixed.`,
+                { cause: e, path: fileCheck.path },
+            );
+        }
+
         const templateContent = await this.parentHost.readTextFile(
             this.normalizeTemplatePath(
                 this.settings.localSourceNoteTemplatePath,
@@ -409,7 +481,16 @@ export class LocalNoteService {
             fileCheck.frontmatter || {},
         );
 
-        await this.parentHost.writeTextFile(fileCheck.path, content);
+        const spliced = reinsertPersistRegions(content, extracted);
+
+        await this.parentHost.writeTextFile(fileCheck.path, spliced.content);
+
+        if (spliced.newOrphans.length > 0) {
+            this.reportNewOrphans(
+                fileCheck.path,
+                spliced.newOrphans.map((o) => o.id),
+            );
+        }
 
         this.parentHost.log(
             "info",

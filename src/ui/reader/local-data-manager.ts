@@ -137,6 +137,36 @@ export class LocalDataManager {
         await this.persistAnnotations();
     }
 
+    /**
+     * Update a single annotation's comment and persist to the sidecar
+     * WITHOUT triggering a source-note re-render — used by the editor
+     * sync plugin when the edit originated from the note itself (the
+     * note already contains the new text).
+     *
+     * @returns true when a write actually happened.
+     */
+    async updateAnnotationCommentFromNote(
+        annotationId: string,
+        comment: string,
+    ): Promise<boolean> {
+        if (this.annotationCache.size === 0) {
+            await this.loadAnnotations();
+        }
+
+        const annotation = this.annotationCache.get(annotationId);
+        if (!annotation) return false;
+        // External / read-only annotations are owned by the PDF — the
+        // template never wraps them, but stay defensive here too.
+        if (annotation.readOnly === true || annotation.isExternal === true)
+            return false;
+        if ((annotation.comment ?? "") === comment) return false;
+
+        annotation.comment = comment;
+        annotation.dateModified = new Date().toISOString();
+        await this.writeJsonFile(this.getAllAnnotations());
+        return true;
+    }
+
     /* ================================================================ */
     /*  Private helpers                                                */
     /* ================================================================ */

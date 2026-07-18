@@ -14,6 +14,11 @@ export class TaskMonitor {
         [libraryID: number, annotationKey: string, parentItemKey: string]
     >();
 
+    /** Fires when a LOCAL attachment's annotation is edited from the source-note editable region. */
+    public readonly localAnnotationChanged = new EventBus<
+        [attachmentPath: string, annotationId: string]
+    >();
+
     /** Fires when a child note is created or updated from the source-note editable region. */
     public readonly noteChangedByEditor = new EventBus<
         [libraryID: number, noteKey: string, parentItemKey: string]

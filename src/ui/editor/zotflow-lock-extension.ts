@@ -11,6 +11,8 @@ interface FrontmatterInfo {
     fmEnd: number;
     hasLibraryId: boolean;
     libraryId: number | undefined;
+    /** True for local attachment source notes (zotflow-local-attachment). */
+    isLocal: boolean;
 }
 
 /** Parse frontmatter once, extracting lock state, end offset, and library-id. */
@@ -21,6 +23,7 @@ function parseFrontmatter(state: EditorState): FrontmatterInfo {
             fmEnd: -1,
             hasLibraryId: false,
             libraryId: undefined,
+            isLocal: false,
         };
     }
 
@@ -36,12 +39,14 @@ function parseFrontmatter(state: EditorState): FrontmatterInfo {
     const fm = fmMatch ? fmMatch[0] : "";
     const libIdMatch = /^library-id:\s*(\d+)/m.exec(fm);
     const libraryId = libIdMatch ? Number(libIdMatch[1]) : undefined;
+    const isLocal = /^zotflow-local-attachment:/m.test(fm);
 
     return {
         locked,
         fmEnd,
         hasLibraryId: libraryId !== undefined,
         libraryId,
+        isLocal,
     };
 }
 
@@ -78,8 +83,9 @@ export function ZotFlowLockExtension(
                 fm.libraryId !== undefined &&
                 !services.libraryCache.canEditNotes(fm.libraryId);
 
-            // If library-id is present, editable regions are active
-            const regionsEnabled = fm.hasLibraryId;
+            // Editable regions are active for Zotero source notes
+            // (library-id) and local attachment source notes.
+            const regionsEnabled = fm.hasLibraryId || fm.isLocal;
             let regions = regionsEnabled
                 ? (tr.startState.field(editableRegionsField, false) ?? [])
                 : [];
