@@ -580,6 +580,11 @@ export default class ZotFlow extends Plugin {
 
             if (type === "open-note") {
                 await workerBridge.libraryNote.openNote(libID, key);
+            } else if (type === "open-item-note") {
+                // Child note links (e.g. converted Better Notes
+                // zotero://note links) — openItemNote honors the
+                // alwaysOpenChildNoteInEditor setting.
+                await openItemNote(libID, key, this.app);
             } else if (type === "open-attachment") {
                 await openAttachment(libID, key, this.app, navigation);
             } else if (type === "open-annotation") {

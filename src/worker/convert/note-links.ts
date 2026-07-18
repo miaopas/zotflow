@@ -141,6 +141,18 @@ export async function zotflowToZoteroLinks(
             return zoteroSelectItemUri(prefix, key);
         }
 
+        if (type === "open-item-note") {
+            // Child notes in the personal library round-trip as Better
+            // Notes links (`zotero://note/u/<key>/`) — the popular
+            // plugin's note-to-note format, which inbound conversion maps
+            // to open-item-note. Group notes fall back to select (the BN
+            // group form uses Zotero-internal library ids we can't derive).
+            if (!isGroup) {
+                return `zotero://note/u/${key}/`;
+            }
+            return zoteroSelectItemUri(prefix, key);
+        }
+
         if (type === "open-annotation") {
             const attachmentKey = await resolver.getAnnotationParentKey(
                 libraryID,
@@ -180,8 +192,19 @@ export async function zotflowToZoteroLinks(
 /*  Zotero → ZotFlow (inbound, before html2md display)              */
 /* ================================================================ */
 
+// `open` is Zotero 7's generalization of `open-pdf` (any reader type);
+// both route to the same handler, so they share conversion semantics.
 const ZOTERO_LINK_RE =
-    /zotero:\/\/(select|open-pdf)\/(library|groups\/\d+)\/items\/([A-Z0-9]+)(\?[^"'\s<>)]*)?/g;
+    /zotero:\/\/(select|open-pdf|open)\/(library|groups\/\d+)\/items\/([A-Z0-9]+)(\?[^"'\s<>)]*)?/g;
+
+// Better Notes plugin note-to-note links: zotero://note/<u|internal-group-id>/<KEY>/?params#hash
+// Only the personal (`u`) form is convertible — the numeric segment is a
+// Zotero-INTERNAL library id that cannot be mapped to a web groupID.
+// Anchor params (line/section/hash) are dropped: item-level is enough.
+// The trailing lookahead rejects unexpected deeper paths outright —
+// a partial match would convert the prefix and leave the tail dangling.
+const BETTER_NOTES_LINK_RE =
+    /zotero:\/\/note\/(u|\d+)\/([A-Z0-9]+)\/?(?:\?[^"'\s<>)#]*)?(?:#[^"'\s<>)]*)?(?![\w/])/g;
 
 export async function zoteroToZotflowLinks(
     html: string,
@@ -189,7 +212,24 @@ export async function zoteroToZotflowLinks(
 ): Promise<string> {
     if (!html.includes("zotero://")) return html;
 
-    return replaceAsync(html, ZOTERO_LINK_RE, async (m) => {
+    // Better Notes note links → open-note (personal library only).
+    const converted = await replaceAsync(
+        html,
+        BETTER_NOTES_LINK_RE,
+        async (m) => {
+            const [link, prefix, key] = m as unknown as [
+                string,
+                string,
+                string,
+            ];
+            if (prefix !== "u") return link; // internal group id → untouched
+            const libraryID = await resolver.getPersonalLibraryID();
+            if (libraryID === null) return link;
+            return `obsidian://zotflow?type=open-item-note&libraryID=${libraryID}&key=${key}`;
+        },
+    );
+
+    return replaceAsync(converted, ZOTERO_LINK_RE, async (m) => {
         const [link, action, prefix, key, rawQuery] = m as unknown as [
             string,
             string,

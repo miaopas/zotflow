@@ -227,6 +227,109 @@ test("inbound: markdown link destination terminates at closing paren", async () 
 });
 
 /* ================================================================ */
+/*  Zotero 7 generic `open` + Better Notes note links               */
+/* ================================================================ */
+
+test("inbound: zotero://open behaves like open-pdf (annotation)", async () => {
+    const html = "zotero://open/library/items/ATT1?annotation=ANNO1";
+    assertEq(
+        await zoteroToZotflowLinks(html, resolver),
+        zf("type=open-annotation&libraryID=1&key=ANNO1"),
+        "converted",
+    );
+});
+
+test("inbound: zotero://open bare and with page", async () => {
+    const bare = await zoteroToZotflowLinks(
+        "zotero://open/groups/777/items/ATT1",
+        resolver,
+    );
+    assertEq(
+        bare,
+        zf("type=open-attachment&libraryID=777&key=ATT1"),
+        "bare open",
+    );
+    const navigation = encodeURIComponent(JSON.stringify({ pageIndex: 4 }));
+    const paged = await zoteroToZotflowLinks(
+        "zotero://open/library/items/ATT1?page=5",
+        resolver,
+    );
+    assertEq(
+        paged,
+        zf(`type=open-attachment&libraryID=1&key=ATT1&navigation=${navigation}`),
+        "paged open",
+    );
+});
+
+test("inbound: zotero://open with unknown param left untouched", async () => {
+    const html = "zotero://open/library/items/ATT1?cfi=epubcfi(/6/4)";
+    assertEq(await zoteroToZotflowLinks(html, resolver), html, "untouched");
+});
+
+test("inbound: Better Notes u-form → open-note (anchors dropped)", async () => {
+    const html = `<a href="zotero://note/u/NOTE1/?ignore=1&line=5#sel">note</a>`;
+    assertEq(
+        await zoteroToZotflowLinks(html, resolver),
+        `<a href="${zf("type=open-item-note&libraryID=1&key=NOTE1")}">note</a>`,
+        "converted, params and hash dropped",
+    );
+});
+
+test("inbound: Better Notes bare u-form without trailing slash", async () => {
+    const html = "zotero://note/u/NOTE1";
+    assertEq(
+        await zoteroToZotflowLinks(html, resolver),
+        zf("type=open-item-note&libraryID=1&key=NOTE1"),
+        "converted",
+    );
+});
+
+test("inbound: Better Notes numeric (internal group id) form untouched", async () => {
+    const html = "zotero://note/12345/NOTE1/?line=2";
+    assertEq(await zoteroToZotflowLinks(html, resolver), html, "untouched");
+});
+
+test("inbound: unexpected deeper note path left fully untouched", async () => {
+    const html = "zotero://note/u/NOTE1/extra/segments";
+    assertEq(
+        await zoteroToZotflowLinks(html, resolver),
+        html,
+        "no partial conversion",
+    );
+});
+
+test("outbound: open-item-note (personal) emits Better Notes form", async () => {
+    const html = zf("type=open-item-note&libraryID=1&key=NOTE1");
+    assertEq(
+        await zotflowToZoteroLinks(html, resolver),
+        "zotero://note/u/NOTE1/",
+        "BN form for personal child note",
+    );
+});
+
+test("outbound: open-item-note (group) falls back to select", async () => {
+    const html = zf("type=open-item-note&libraryID=777&key=NOTE1");
+    assertEq(
+        await zotflowToZoteroLinks(html, resolver),
+        "zotero://select/groups/777/items/NOTE1",
+        "select for group note",
+    );
+});
+
+test("roundtrip: Better Notes link is stable after first anchor drop", async () => {
+    const original = "zotero://note/u/NOTE1/?line=5";
+    const displayed = await zoteroToZotflowLinks(original, resolver);
+    const stored = await zotflowToZoteroLinks(displayed, resolver);
+    assertEq(stored, "zotero://note/u/NOTE1/", "stays a BN link, never select");
+    const displayed2 = await zoteroToZotflowLinks(stored, resolver);
+    assertEq(
+        await zotflowToZoteroLinks(displayed2, resolver),
+        stored,
+        "stable thereafter",
+    );
+});
+
+/* ================================================================ */
 /*  Round trips                                                     */
 /* ================================================================ */
 
