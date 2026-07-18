@@ -206,6 +206,21 @@ export class GeneralSection {
 
         generalSettingGroup.addSetting((setting) => {
             setting
+                .setName("Open Items on Single Click")
+                .setDesc(
+                    "In the tree view, clicking an item's title directly opens it (source note, attachment, or note preview) and only the chevron expands/collapses. When disabled, a click toggles expansion and a double click opens attachments and notes.",
+                )
+                .addToggle((toggle) => {
+                    toggle.setValue(this.plugin.settings.treeSingleClickOpen);
+                    toggle.onChange(async (value) => {
+                        this.plugin.settings.treeSingleClickOpen = value;
+                        await this.plugin.saveSettings();
+                    });
+                });
+        });
+
+        generalSettingGroup.addSetting((setting) => {
+            setting
                 .setName("Auto Import Annotation Images")
                 .setDesc(
                     "Auto import annotation images for area and ink annotations from PDF when creating source notes.",

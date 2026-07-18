@@ -75,28 +75,88 @@ export const NodeItem = ({ node, style }: NodeRendererProps<ViewNode>) => {
             break;
     }
 
-    const handleOnClick = (e: React.MouseEvent) => {
+    const handleArrowClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
         node.toggle();
     };
 
-    const handleDoubleClick = async (e: React.MouseEvent) => {
+    const openPrimaryTarget = () => {
+        if (nodeType === "item" && node.data.itemType === "attachment") {
+            void openAttachment(
+                node.data.libraryID,
+                node.data.key,
+                services.app,
+            ).catch((err) => {
+                services.logService.error(
+                    "Failed to open attachment",
+                    "TreeView",
+                    err,
+                );
+                services.notificationService.notify(
+                    "error",
+                    "Failed to open attachment.",
+                );
+            });
+        } else if (nodeType === "item" && node.data.itemType === "note") {
+            void openItemNote(
+                node.data.libraryID,
+                node.data.key,
+                services.app,
+            ).catch((err) => {
+                services.logService.error(
+                    "Failed to open note preview",
+                    "TreeView",
+                    err,
+                );
+                services.notificationService.notify(
+                    "error",
+                    "Failed to open note.",
+                );
+            });
+        } else if (isTopLevelItem) {
+            void workerBridge.libraryNote
+                .openNote(node.data.libraryID, node.data.key, {
+                    forceUpdateContent: true,
+                    forceUpdateImages: false,
+                })
+                .catch((err) => {
+                    services.logService.error(
+                        "Failed to create/open note",
+                        "TreeView",
+                        err,
+                    );
+                    services.notificationService.notify(
+                        "error",
+                        "Failed to open source note.",
+                    );
+                });
+        } else {
+            node.toggle();
+        }
+    };
+
+    // The setting is read at event time so toggling it applies live.
+    const handleOnClick = (e: React.MouseEvent) => {
+        if (!services.settings.treeSingleClickOpen) {
+            node.toggle();
+            return;
+        }
+        openPrimaryTarget();
+    };
+
+    const handleDoubleClick = (e: React.MouseEvent) => {
+        if (services.settings.treeSingleClickOpen) return;
         e.stopPropagation();
         node.toggle();
 
         if (nodeType === "item" && node.data.itemType === "attachment") {
-            // Attachment: Open PDF
-            await openAttachment(
+            void openAttachment(
                 node.data.libraryID,
                 node.data.key,
                 services.app,
             );
         } else if (nodeType === "item" && node.data.itemType === "note") {
-            // Child note: Open read-only preview
-            await openItemNote(
-                node.data.libraryID,
-                node.data.key,
-                services.app,
-            );
+            void openItemNote(node.data.libraryID, node.data.key, services.app);
         }
     };
 
@@ -605,8 +665,11 @@ export const NodeItem = ({ node, style }: NodeRendererProps<ViewNode>) => {
                 />
             ))}
 
-            {/* Arrow */}
-            <div className="zotflow-arrow-box">
+            {/* Arrow: own click zone; leaf placeholders stay row body */}
+            <div
+                className="zotflow-arrow-box"
+                onClick={isFolder ? handleArrowClick : undefined}
+            >
                 <ObsidianIcon
                     icon={node.isOpen ? "chevron-down" : "chevron-right"}
                     containerStyle={{

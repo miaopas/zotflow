@@ -63,6 +63,7 @@ export interface ZotFlowSettings {
     defaultDarkTheme: string;
     treeCollectionSort: CollectionSortOrder;
     treeItemSort: ItemSortOrder;
+    treeSingleClickOpen: boolean;
     linkedAttachmentBaseDir: string;
     defaultEditableRegionLocked: boolean;
     hideEditableRegionMarkers: boolean;
@@ -125,6 +126,7 @@ export const DEFAULT_SETTINGS: ZotFlowSettings = {
     defaultDarkTheme: "obsidian",
     treeCollectionSort: "name-asc",
     treeItemSort: "title-asc",
+    treeSingleClickOpen: false,
     linkedAttachmentBaseDir: "",
     defaultEditableRegionLocked: true,
     hideEditableRegionMarkers: false,

@@ -510,10 +510,14 @@
     display: flex;
     justify-content: center;
     align-items: center;
+    /* Enlarge the chevron's hit box without shifting layout:
+       negative margin cancels the padding's visual footprint. */
+    padding: 0 3px 0 8px;
+    margin: 0 -3px 0 -8px;
     opacity: var(--icon-opacity);
     color: var(--icon-color);
     z-index: 2;
-    margin-inline-end: 6px;
+    margin-inline-end: 4px;
 
     .svg-icon {
         color: var(--nav-collapse-icon-color);
