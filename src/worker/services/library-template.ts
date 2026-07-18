@@ -212,18 +212,28 @@ export class LibraryTemplateService {
              * citation render paths that don't prep one), preserving the old
              * behaviour for callers that don't opt in.
              */
-            function (this: any, input: string, type: string, key: string) {
+            function (
+                this: any,
+                input: string,
+                type: string,
+                key: string,
+                mode?: string,
+            ) {
                 if (!type || !key) return input;
                 const readOnlyKeys: Set<string> | undefined =
                     this?.context?.environments?.__zfReadOnlyKeys;
                 if (readOnlyKeys && readOnlyKeys.has(`${type}:${key}`)) {
                     return input;
                 }
-                // ANNO with single-line content: inline markers, so the
-                // whole region fits on one blockquote line. NOTE and
-                // PERSIST always use the block form (the worker-side
+                // Opt-in inline layout (`| wrap_editable: "ANNO", key,
+                // "inline"`): markers and content share one line. ANNO
+                // only, single-line content only — multi-line falls back
+                // to block, and PERSIST must stay block (the worker-side
                 // persist parser requires markers on their own lines).
+                // Not the default: Obsidian's Live Preview renders text
+                // sharing a line with HTML comments in split segments.
                 if (
+                    mode === "inline" &&
                     type === "ANNO" &&
                     typeof input === "string" &&
                     !input.includes("\n")
