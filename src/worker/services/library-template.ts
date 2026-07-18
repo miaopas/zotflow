@@ -23,6 +23,8 @@ import {
 } from "utils/zotero-uri";
 import { getAnnotationJson } from "db/annotation";
 import type { AnnotationJSON } from "types/zotero-reader";
+import { zoteroToZotflowLinks } from "worker/convert/note-links";
+import { createDbNoteLinkResolver } from "./note-link-resolver";
 import type { DbHelperService } from "./db-helper";
 import type { ConvertService } from "./convert";
 import type { Html2MdOptions } from "worker/convert";
@@ -236,7 +238,16 @@ export class LibraryTemplateService {
                     undefined,
                 strictLineBreaks: vaultConfig.strictLineBreaks,
             };
-            return await this.convertService.html2md(input, opts);
+            let md = await this.convertService.html2md(input, opts);
+            // Display native zotero:// links as ZotFlow links. Runs on the
+            // MARKDOWN side: canonical zotero links carry at most one query
+            // param (no `&`), so they pass the markdown serializer without
+            // escaping, while the multi-param zotflow links we emit here
+            // never go through a serializer again.
+            if (this.settings.convertNoteLinks) {
+                md = await zoteroToZotflowLinks(md, createDbNoteLinkResolver());
+            }
+            return md;
         });
     }
 

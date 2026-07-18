@@ -61,6 +61,21 @@ export class GeneralSection {
 
         zoteroSourceNote.addSetting((setting) => {
             setting
+                .setName("Convert Item Note Links")
+                .setDesc(
+                    "Show links inside item notes as ZotFlow links in Obsidian while storing and syncing them as native Zotero links — clicks open ZotFlow's reader here and Zotero's reader there.",
+                )
+                .addToggle((toggle) => {
+                    toggle.setValue(this.plugin.settings.convertNoteLinks);
+                    toggle.onChange(async (value) => {
+                        this.plugin.settings.convertNoteLinks = value;
+                        await this.plugin.saveSettings();
+                    });
+                });
+        });
+
+        zoteroSourceNote.addSetting((setting) => {
+            setting
                 .setName("Lock Editable Regions by Default")
                 .setDesc(
                     "When enabled, editable regions in source notes start locked. Click the lock icon on a region to unlock it for editing.",

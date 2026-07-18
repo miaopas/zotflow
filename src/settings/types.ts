@@ -64,6 +64,7 @@ export interface ZotFlowSettings {
     treeCollectionSort: CollectionSortOrder;
     treeItemSort: ItemSortOrder;
     treeSingleClickOpen: boolean;
+    convertNoteLinks: boolean;
     linkedAttachmentBaseDir: string;
     defaultEditableRegionLocked: boolean;
     hideEditableRegionMarkers: boolean;
@@ -127,6 +128,7 @@ export const DEFAULT_SETTINGS: ZotFlowSettings = {
     treeCollectionSort: "name-asc",
     treeItemSort: "title-asc",
     treeSingleClickOpen: false,
+    convertNoteLinks: true,
     linkedAttachmentBaseDir: "",
     defaultEditableRegionLocked: true,
     hideEditableRegionMarkers: false,
