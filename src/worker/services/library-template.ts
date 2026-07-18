@@ -212,34 +212,18 @@ export class LibraryTemplateService {
              * citation render paths that don't prep one), preserving the old
              * behaviour for callers that don't opt in.
              */
-            function (
-                this: any,
-                input: string,
-                type: string,
-                key: string,
-                mode?: string,
-            ) {
+            function (this: any, input: string, type: string, key: string) {
                 if (!type || !key) return input;
                 const readOnlyKeys: Set<string> | undefined =
                     this?.context?.environments?.__zfReadOnlyKeys;
                 if (readOnlyKeys && readOnlyKeys.has(`${type}:${key}`)) {
                     return input;
                 }
-                // Opt-in inline layout (`| wrap_editable: "ANNO", key,
-                // "inline"`): markers and content share one line. ANNO
-                // only, single-line content only — multi-line falls back
-                // to block, and PERSIST must stay block (the worker-side
-                // persist parser requires markers on their own lines).
-                // Not the default: Obsidian's Live Preview renders text
-                // sharing a line with HTML comments in split segments.
-                if (
-                    mode === "inline" &&
-                    type === "ANNO" &&
-                    typeof input === "string" &&
-                    !input.includes("\n")
-                ) {
-                    return `<!-- ZF_${type}_BEG_${key} -->${input}<!-- ZF_${type}_END_${key} -->`;
-                }
+                // Always block form: markers on their own lines. An inline
+                // (single-line) layout was tried and retired — a line
+                // starting with `<!--` becomes a CommonMark HTML block, so
+                // markdown inside it renders raw in Reading view; `%%`
+                // markers avoid that but introduce stray blank lines.
                 return `<!-- ZF_${type}_BEG_${key} -->\n${input}\n<!-- ZF_${type}_END_${key} -->`;
             },
         );

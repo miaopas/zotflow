@@ -296,16 +296,16 @@ export function ZotFlowRegionDecorationExtension(
                             inclusive: true,
                         }),
                     });
-                    // Unlock icon widget BEFORE the BEG marker text. Left
-                    // placement keeps the icon away from the content seam:
-                    // cursor motion at the region edge and deletions at the
-                    // content start no longer interact with the widget.
+                    // Unlock icon widget after the BEG marker text. (With
+                    // block-form regions the marker owns its line, so the
+                    // icon sits at the line end, away from the content that
+                    // starts on the next line.)
                     const regionUnlocked = isDefaultLocked()
                         ? unlocked.has(region.key) // default locked → toggle set = unlocked keys
                         : !unlocked.has(region.key); // default unlocked → toggle set = locked keys
                     ranges.push({
-                        from: region.begFrom,
-                        to: region.begFrom,
+                        from: region.begTo,
+                        to: region.begTo,
                         deco: Decoration.widget({
                             widget: new UnlockIconWidget(
                                 region.key,
@@ -314,7 +314,7 @@ export function ZotFlowRegionDecorationExtension(
                                 // read-only libraries.
                                 lockDisabled && region.type !== "PERSIST",
                             ),
-                            side: -1,
+                            side: 1,
                         }),
                     });
 
@@ -424,11 +424,11 @@ export function ZotFlowRegionDecorationExtension(
                 color: "var(--text-muted)",
             },
 
-            /* Unlock icon (sits left of the BEG marker) */
+            /* Unlock icon (sits right of the BEG marker) */
             ".cm-zotflow-unlock-icon": {
                 display: "inline-flex",
                 alignItems: "center",
-                marginRight: "4px",
+                marginLeft: "4px",
                 verticalAlign: "middle",
                 fontSize: "var(--font-small)",
                 color: "var(--text-muted)",
