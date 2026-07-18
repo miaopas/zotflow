@@ -296,13 +296,16 @@ export function ZotFlowRegionDecorationExtension(
                             inclusive: true,
                         }),
                     });
-                    // Unlock icon widget after BEG marker text
+                    // Unlock icon widget BEFORE the BEG marker text. Left
+                    // placement keeps the icon away from the content seam:
+                    // cursor motion at the region edge and deletions at the
+                    // content start no longer interact with the widget.
                     const regionUnlocked = isDefaultLocked()
                         ? unlocked.has(region.key) // default locked → toggle set = unlocked keys
                         : !unlocked.has(region.key); // default unlocked → toggle set = locked keys
                     ranges.push({
-                        from: region.begTo,
-                        to: region.begTo,
+                        from: region.begFrom,
+                        to: region.begFrom,
                         deco: Decoration.widget({
                             widget: new UnlockIconWidget(
                                 region.key,
@@ -311,7 +314,7 @@ export function ZotFlowRegionDecorationExtension(
                                 // read-only libraries.
                                 lockDisabled && region.type !== "PERSIST",
                             ),
-                            side: 1,
+                            side: -1,
                         }),
                     });
 
@@ -421,11 +424,11 @@ export function ZotFlowRegionDecorationExtension(
                 color: "var(--text-muted)",
             },
 
-            /* Unlock icon */
+            /* Unlock icon (sits left of the BEG marker) */
             ".cm-zotflow-unlock-icon": {
                 display: "inline-flex",
                 alignItems: "center",
-                marginLeft: "4px",
+                marginRight: "4px",
                 verticalAlign: "middle",
                 fontSize: "var(--font-small)",
                 color: "var(--text-muted)",
