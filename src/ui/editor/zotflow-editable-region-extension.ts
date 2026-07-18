@@ -259,14 +259,10 @@ const editableRegionSyncPlugin = ViewPlugin.fromClass(
                             });
                     } else {
                         // Local attachment: comments live in the .zf.json
-                        // sidecar as plain markdown — update it directly on
-                        // the main thread, without re-rendering the note
-                        // (the note already contains the new text).
-                        // Undo the template's blockquote-safety escaping
-                        // (sanitizeQuotesString: `>` → `\>`) so repeated
-                        // round-trips don't accumulate backslashes.
-                        const unescaped = stripped.replace(/\\>/g, ">");
-
+                        // sidecar as Zotero's restricted annotation HTML —
+                        // LocalDataManager converts MD → HTML, mirroring the
+                        // worker path. No note re-render (the note already
+                        // contains the new text).
                         const file = services.app.vault.getAbstractFileByPath(
                             target.attachmentPath,
                         );
@@ -275,7 +271,7 @@ const editableRegionSyncPlugin = ViewPlugin.fromClass(
                         new LocalDataManager(file)
                             .updateAnnotationCommentFromNote(
                                 region.key,
-                                unescaped,
+                                stripped,
                             )
                             .then((changed) => {
                                 if (changed) {

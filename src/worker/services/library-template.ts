@@ -476,11 +476,6 @@ export class LibraryTemplateService {
             : this.settings.citationFootnoteTemplate.trim();
     }
 
-    private sanitizeQuotesString(str: string): string {
-        // Escape >, < into \>, \<
-        return str.replace(/>/g, "\\>").replace(/</g, "\\<");
-    }
-
     private async prepareItemContext(item: AnyIDBZoteroItem): Promise<any> {
         const itemContext = await this.mapToItemContext(item);
 
@@ -651,7 +646,7 @@ export class LibraryTemplateService {
             parentItem,
             type: annotation.type,
             authorName: annotation.authorName,
-            text: this.sanitizeQuotesString(annotation.text || ""),
+            text: this.convertService.annoHtml2md(annotation.text || ""),
             comment: this.convertService.annoHtml2md(annotation.comment || ""),
             color: annotation.color,
             pageLabel: annotation.pageLabel,

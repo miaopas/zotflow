@@ -3,6 +3,7 @@ import { workerBridge } from "bridge";
 import { services } from "services/services";
 import { readTextFile, saveTextFile, checkFile } from "utils/file";
 import { getLocalSidecarPath } from "utils/utils";
+import { annoMd2html } from "worker/convert/annotation-comment";
 
 import type { AnnotationJSON } from "types/zotero-reader";
 
@@ -143,11 +144,14 @@ export class LocalDataManager {
      * sync plugin when the edit originated from the note itself (the
      * note already contains the new text).
      *
+     * @param markdownComment — markdown from the ANNO editable region;
+     * converted to Zotero's restricted annotation HTML before storage,
+     * mirroring the library-note path.
      * @returns true when a write actually happened.
      */
     async updateAnnotationCommentFromNote(
         annotationId: string,
-        comment: string,
+        markdownComment: string,
     ): Promise<boolean> {
         if (this.annotationCache.size === 0) {
             await this.loadAnnotations();
@@ -159,9 +163,11 @@ export class LocalDataManager {
         // template never wraps them, but stay defensive here too.
         if (annotation.readOnly === true || annotation.isExternal === true)
             return false;
-        if ((annotation.comment ?? "") === comment) return false;
 
-        annotation.comment = comment;
+        const newComment = annoMd2html(markdownComment);
+        if ((annotation.comment ?? "") === newComment) return false;
+
+        annotation.comment = newComment;
         annotation.dateModified = new Date().toISOString();
         await this.writeJsonFile(this.getAllAnnotations());
         return true;

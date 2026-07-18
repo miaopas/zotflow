@@ -5,6 +5,7 @@ import type { AnnotationJSON } from "types/zotero-reader";
 import type { IParentProxy } from "bridge/types";
 import { ZotFlowError, ZotFlowErrorCode } from "utils/error";
 import { getLocalSidecarPath } from "utils/utils";
+import { annoHtml2md } from "worker/convert";
 import type { AnnotationTemplateContext } from "types/template-context";
 
 /** Default LiquidJS template string for local vault file source notes. */
@@ -182,12 +183,6 @@ export class LocalTemplateService {
         }
     }
 
-    private sanitizeQuotesString(str: string | null | undefined): string {
-        if (!str) return "";
-        // Escape > into \> to prevent breaking blockquotes structure in Markdown
-        return str.replace(/>/g, "\\>");
-    }
-
     public async prepareLocalAttachmentContext(
         localAttachment: TFileWithoutParentAndVault,
         annotations: AnnotationJSON[],
@@ -202,8 +197,12 @@ export class LocalTemplateService {
                     libraryID: 0, // Local files imply simplified library context
                     type: annotation.type,
                     authorName: annotation.authorName,
-                    text: this.sanitizeQuotesString(annotation.text),
-                    comment: this.sanitizeQuotesString(annotation.comment),
+                    // Both fields carry Zotero's restricted annotation HTML
+                    // (<b>/<i>/<sub>/<sup>) — convert to markdown, escaping
+                    // stray </> on the way (annoHtml2md subsumes the old
+                    // sanitizeQuotesString).
+                    text: annoHtml2md(annotation.text || ""),
+                    comment: annoHtml2md(annotation.comment || ""),
                     color: annotation.color,
                     pageLabel: annotation.pageLabel,
                     tags:
