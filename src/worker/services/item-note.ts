@@ -95,6 +95,18 @@ export class ItemNoteService {
             );
         }
 
+        // Zotero only allows child notes under regular items. Guarding here
+        // covers every entry point (tree view, command palette, file menu).
+        if (
+            ["attachment", "note", "annotation"].includes(parentItem.itemType)
+        ) {
+            throw new ZotFlowError(
+                ZotFlowErrorCode.UNKNOWN,
+                "ItemNoteService",
+                `Cannot create a child note under a ${parentItem.itemType} item`,
+            );
+        }
+
         const key = this.generateTempKey();
         const now = new Date().toISOString().split(".")[0] + "Z";
         const library = parentItem.raw.library;
