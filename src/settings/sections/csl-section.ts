@@ -152,8 +152,8 @@ export class CslSection {
                     "Remove all downloaded styles and locales. Styles from the custom styles folder are kept.",
                 )
                 .addButton((btn) => {
+                    btn.buttonEl.addClass("mod-warning");
                     btn.setButtonText("Clear cache")
-                        .setDestructive()
                         .onClick(async () => {
                             try {
                                 await workerBridge.cslRender.clearCache();

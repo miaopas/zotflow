@@ -1,4 +1,5 @@
 import { db } from "db/db";
+import { proxiedFetch } from "worker/proxied-fetch";
 import { CslRenderService } from "worker/csl";
 import { ZotFlowError, ZotFlowErrorCode } from "utils/error";
 
@@ -47,12 +48,11 @@ class DexieKVStore implements KVStore {
  * Only ever fetches data (XML/JSON) — never code.
  */
 class WorkerFetcher implements ResourceFetcher {
-    // Worker code cannot use requestUrl (main-thread Obsidian API); the
-    // worker's global fetch is patched in worker.ts to proxy through
-    // ParentHost.request, which uses requestUrl under the hood.
+    // Worker code cannot use requestUrl (main-thread Obsidian API);
+    // proxiedFetch is the worker fetch installed by worker.ts, which
+    // routes through ParentHost.request (requestUrl under the hood).
     async fetchText(url: string): Promise<string> {
-        // eslint-disable-next-line no-restricted-globals
-        const res = await fetch(url);
+        const res = await proxiedFetch(url);
         if (!res.ok) {
             throw new Error(`HTTP ${res.status} for ${url}`);
         }

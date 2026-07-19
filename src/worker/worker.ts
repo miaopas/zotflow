@@ -1,4 +1,5 @@
 import * as Comlink from "comlink";
+import { setProxiedFetch } from "./proxied-fetch";
 import { ZoteroAPIService } from "./services/zotero";
 import { SyncService } from "./services/sync";
 import { AttachmentService } from "./services/attachment";
@@ -159,7 +160,7 @@ const exposedApi: WorkerAPI = {
     ) => {
         // Patch global fetch to proxy through Obsidian Main Thread
         (globalThis as any).originalFetch = (globalThis as any).fetch;
-        (globalThis as any).fetch = async (url: string, init?: RequestInit) => {
+        const proxiedFetchImpl = async (url: string, init?: RequestInit) => {
             try {
                 const response = await parentHost.request({
                     url: url,
@@ -192,6 +193,11 @@ const exposedApi: WorkerAPI = {
                 );
             }
         };
+        (globalThis as any).fetch = proxiedFetchImpl;
+
+        // Also expose via module import (see proxied-fetch.ts) so worker
+        // code can use it without referencing lint-restricted globals.
+        setProxiedFetch(proxiedFetchImpl);
 
         try {
             _zotero = new ZoteroAPIService(settings.zoteroapikey);
