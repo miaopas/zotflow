@@ -23,11 +23,21 @@ import {
 } from "utils/zotero-uri";
 import { getAnnotationJson } from "db/annotation";
 import type { AnnotationJSON } from "types/zotero-reader";
+import { zoteroToZotflowLinks } from "worker/convert/note-links";
+import { createDbNoteLinkResolver } from "./note-link-resolver";
 import type { DbHelperService } from "./db-helper";
 import type { ConvertService } from "./convert";
 import type { Html2MdOptions } from "worker/convert";
 import type { NotePathService } from "./note-path";
 import type { CitationTemplateInput } from "services/citation-service";
+import type { CslRenderWorkerService } from "./csl-render";
+import type { ZoteroAPIService } from "./zotero";
+import type {
+    CiteProps,
+    CSLItem,
+    OutputFormat,
+    RenderOptions,
+} from "worker/csl";
 import { extractYear } from "utils/date";
 
 const DEFAULT_ITEM_TEMPLATE = `---
@@ -122,6 +132,14 @@ Unknown Author {%- endif -%}, *{{ item.title }}* ({{ item.year }}).`;
 const ZOTERO_URI_RE =
     /^https?:\/\/zotero\.org\/(?:users|groups)\/(\d+)\/items\/([A-Z0-9]+)$/i;
 
+// Valid `format:` values for the citation/bibliography filters.
+const CSL_OUTPUT_FORMATS = new Set([
+    "text",
+    "html",
+    "markdown",
+    "markdown-pure",
+]);
+
 /** LiquidJS template engine for rendering library (Zotero) item source notes. */
 export class LibraryTemplateService {
     private engine: Liquid;
@@ -132,6 +150,8 @@ export class LibraryTemplateService {
         private dbHelper: DbHelperService,
         private notePathService: NotePathService,
         private convertService: ConvertService,
+        private cslRender: CslRenderWorkerService,
+        private zotero: ZoteroAPIService,
     ) {
         this.initialize();
     }
@@ -219,6 +239,11 @@ export class LibraryTemplateService {
                 if (readOnlyKeys && readOnlyKeys.has(`${type}:${key}`)) {
                     return input;
                 }
+                // Always block form: markers on their own lines. An inline
+                // (single-line) layout was tried and retired — a line
+                // starting with `<!--` becomes a CommonMark HTML block, so
+                // markdown inside it renders raw in Reading view; `%%`
+                // markers avoid that but introduce stray blank lines.
                 return `<!-- ZF_${type}_BEG_${key} -->\n${input}\n<!-- ZF_${type}_END_${key} -->`;
             },
         );
@@ -230,9 +255,270 @@ export class LibraryTemplateService {
                     this.settings.annotationImageFolder.replace(/\/$/, "") ||
                     undefined,
                 strictLineBreaks: vaultConfig.strictLineBreaks,
+                // Always on: display-only anchors, unconditionally
+                // stripped on save — no risk for a setting to guard.
+                linkCitationSpans: true,
             };
-            return await this.convertService.html2md(input, opts);
+            let md = await this.convertService.html2md(input, opts);
+            // Display native zotero:// links as ZotFlow links. Runs on the
+            // MARKDOWN side: canonical zotero links carry at most one query
+            // param (no `&`), so they pass the markdown serializer without
+            // escaping, while the multi-param zotflow links we emit here
+            // never go through a serializer again.
+            if (this.settings.convertNoteLinks) {
+                md = await zoteroToZotflowLinks(md, createDbNoteLinkResolver());
+            }
+            return md;
         });
+        // CSL rendering filters. Both take one input or a list; args are an
+        // optional positional style shorthand plus kwargs:
+        //   {{ item | citation: "ieee" }}
+        //   {{ annotation | citation }}   -> cites the annotated item with
+        //                                    the page as locator, e.g. (Doe, 2020, p. 5)
+        //   {{ items | citation }}        -> ONE cluster: (Doe, 2020; Roe, 2021)
+        //   {{ items | bibliography: style: "apa", locale: "de-DE", format: "text" }}
+        // A citation list renders as a single cluster and a bibliography list
+        // as one batch — sorting/numbering/merging are computed by citeproc
+        // over the whole input, so looping in the template would break them.
+        // Defaults: style -> settings.cslDefaultStyleId, locale -> style's
+        // default-locale -> en-US, format -> settings.cslDefaultFormat.
+        // Note: each call is a standalone render, so author disambiguation
+        // does not carry across separate citation calls.
+        this.engine.registerFilter(
+            "citation",
+            async (input: unknown, ...args: unknown[]) => {
+                const { opts } = this.parseCslRenderArgs(args);
+                const refs = Array.isArray(input) ? input : [input];
+                if (refs.length === 0) {
+                    throw new Error(
+                        "The citation filter received an empty item list",
+                    );
+                }
+                const items: CSLItem[] = [];
+                const props: (CiteProps | undefined)[] = [];
+                let hasProps = false;
+                for (let ref of refs) {
+                    let p: CiteProps | undefined;
+                    if (this.isAnnotationContext(ref)) {
+                        const resolved =
+                            await this.resolveAnnotationCite(ref);
+                        ref = resolved.ref;
+                        p = resolved.props;
+                    }
+                    items.push(await this.getCslJson(ref, "citation"));
+                    props.push(p);
+                    if (p) hasProps = true;
+                }
+                return this.cslRender.renderCitation(
+                    items,
+                    opts,
+                    hasProps ? props : undefined,
+                );
+            },
+        );
+        this.engine.registerFilter(
+            "bibliography",
+            async (input: unknown, ...args: unknown[]) => {
+                const { opts, join } = this.parseCslRenderArgs(args);
+                const items = await this.collectCslItems(input, "bibliography");
+                const entries = await this.cslRender.renderBibliography(
+                    items,
+                    opts,
+                );
+                return entries.join(join);
+            },
+        );
+    }
+
+    /** Annotation contexts carry `type` (highlight/ink/...) but no itemType. */
+    private isAnnotationContext(
+        ref: unknown,
+    ): ref is AnnotationTemplateContext {
+        return (
+            typeof ref === "object" &&
+            ref !== null &&
+            !("itemType" in ref) &&
+            typeof (ref as { type?: unknown }).type === "string" &&
+            "pageLabel" in ref
+        );
+    }
+
+    /**
+     * An annotation cites the item it annotates: annotation -> attachment
+     * (parentItem) -> top-level item, with the page label as the locator.
+     */
+    private async resolveAnnotationCite(
+        anno: AnnotationTemplateContext,
+    ): Promise<{
+        ref: { key: string; libraryID: number };
+        props?: CiteProps;
+    }> {
+        if (!anno.parentItem) {
+            throw new Error(
+                "This annotation has no parent attachment — nothing to cite",
+            );
+        }
+        const attachment = await db.items.get([anno.libraryID, anno.parentItem]);
+        if (!attachment) {
+            throw new ZotFlowError(
+                ZotFlowErrorCode.RESOURCE_MISSING,
+                "LibraryTemplateService",
+                `Attachment not found: ${anno.libraryID}/${anno.parentItem}`,
+            );
+        }
+        if (!attachment.parentItem) {
+            throw new Error(
+                "This annotation belongs to a standalone attachment — there is no citable item",
+            );
+        }
+        return {
+            ref: { key: attachment.parentItem, libraryID: anno.libraryID },
+            props: anno.pageLabel
+                ? { locator: anno.pageLabel, label: "page" }
+                : undefined,
+        };
+    }
+
+    /**
+     * Parse citation/bibliography filter arguments. LiquidJS passes kwargs
+     * as 2-element `[key, value]` arrays; anything else positional is
+     * treated as the style shorthand.
+     */
+    private parseCslRenderArgs(args: unknown[]): {
+        opts: RenderOptions;
+        join: string;
+    } {
+        const opts: RenderOptions = {};
+        let join = "\n\n";
+        for (const arg of args) {
+            if (Array.isArray(arg) && arg.length === 2) {
+                const [key, value] = arg as [unknown, unknown];
+                if (value == null) continue;
+                if (typeof value !== "string" && typeof value !== "number") {
+                    throw new Error(
+                        `The "${String(key)}" argument of the citation/bibliography filter must be a string`,
+                    );
+                }
+                const str = String(value);
+                switch (key) {
+                    case "style":
+                        opts.styleId = str;
+                        break;
+                    case "locale":
+                        opts.locale = str;
+                        break;
+                    case "format":
+                        if (!CSL_OUTPUT_FORMATS.has(str)) {
+                            throw new Error(
+                                `Unknown CSL output format "${str}" — use text, html, markdown or markdown-pure`,
+                            );
+                        }
+                        opts.format = str as OutputFormat;
+                        break;
+                    case "join":
+                        join = str;
+                        break;
+                    default:
+                        throw new Error(
+                            `Unknown argument "${String(key)}" for the citation/bibliography filter — supported: style, locale, format, join`,
+                        );
+                }
+            } else if (typeof arg === "string" && arg.trim()) {
+                opts.styleId = arg.trim();
+            }
+        }
+        if (!opts.styleId) opts.styleId = this.settings.cslDefaultStyleId;
+        return { opts, join };
+    }
+
+    /** Resolve filter input (context item object or array) to CSL-JSON items. */
+    private async collectCslItems(
+        input: unknown,
+        filterName: string,
+    ): Promise<CSLItem[]> {
+        const refs = Array.isArray(input) ? input : [input];
+        if (refs.length === 0) {
+            throw new Error(
+                `The ${filterName} filter received an empty item list`,
+            );
+        }
+        return Promise.all(refs.map((ref) => this.getCslJson(ref, filterName)));
+    }
+
+    private async getCslJson(
+        ref: unknown,
+        filterName: string,
+    ): Promise<CSLItem> {
+        const key = (ref as { key?: unknown })?.key;
+        const libraryID = (ref as { libraryID?: unknown })?.libraryID;
+        if (typeof key !== "string" || typeof libraryID !== "number") {
+            throw new Error(
+                `The ${filterName} filter needs a Zotero item from the template context (an object with key and libraryID)`,
+            );
+        }
+        let item = await db.items.get([libraryID, key]);
+        if (!item) {
+            throw new ZotFlowError(
+                ZotFlowErrorCode.RESOURCE_MISSING,
+                "LibraryTemplateService",
+                `Item not found: ${libraryID}/${key}`,
+            );
+        }
+        if (
+            item.itemType === "attachment" ||
+            item.itemType === "note" ||
+            item.itemType === "annotation"
+        ) {
+            throw new Error(
+                `Item "${item.title || key}" is a ${item.itemType} — only regular items can be cited`,
+            );
+        }
+        if (!item.csljson) {
+            item = await this.backfillCslJson(item);
+        }
+        return item.csljson as CSLItem;
+    }
+
+    /**
+     * Fetch and store the CSL-JSON for an item synced before csljson was
+     * part of the pull. One-time cost per item — the stored copy is used
+     * afterwards.
+     */
+    private async backfillCslJson(
+        item: AnyIDBZoteroItem,
+    ): Promise<AnyIDBZoteroItem> {
+        const lib = await db.libraries.get(item.libraryID);
+        const libraryType = lib?.type === "group" ? "group" : "user";
+        let csljson: Record<string, unknown> | undefined;
+        try {
+            const res = await this.zotero.client
+                .library(libraryType, item.libraryID)
+                .items()
+                .get({
+                    itemKey: item.key,
+                    include: "data,csljson",
+                    includeTrashed: true,
+                });
+            csljson = (res.raw as { csljson?: Record<string, unknown> }[])[0]
+                ?.csljson;
+        } catch (e) {
+            throw ZotFlowError.wrap(
+                e,
+                ZotFlowErrorCode.NETWORK_ERROR,
+                "LibraryTemplateService",
+                `Couldn't fetch citation data for "${item.title || item.key}" — run a sync or check your connection`,
+            );
+        }
+        if (!csljson) {
+            throw new ZotFlowError(
+                ZotFlowErrorCode.RESOURCE_MISSING,
+                "LibraryTemplateService",
+                `Zotero returned no citation data for "${item.title || item.key}"`,
+            );
+        }
+        await db.items.update([item.libraryID, item.key], { csljson });
+        item.csljson = csljson;
+        return item;
     }
 
     updateSettings(newSettings: ZotFlowSettings) {
@@ -471,11 +757,6 @@ export class LibraryTemplateService {
             : this.settings.citationFootnoteTemplate.trim();
     }
 
-    private sanitizeQuotesString(str: string): string {
-        // Escape >, < into \>, \<
-        return str.replace(/>/g, "\\>").replace(/</g, "\\<");
-    }
-
     private async prepareItemContext(item: AnyIDBZoteroItem): Promise<any> {
         const itemContext = await this.mapToItemContext(item);
 
@@ -617,6 +898,7 @@ export class LibraryTemplateService {
             ISBN: (data as any).ISBN,
             ISSN: (data as any).ISSN,
             tags: (data as any).tags || [],
+            csljson: item.csljson,
         };
     }
 
@@ -643,10 +925,12 @@ export class LibraryTemplateService {
         return {
             key: annotation.id!,
             libraryID: annotation.libraryID!,
-            parentItem,
+            // Citation-template inputs carry the attachment key on the
+            // AnnotationJSON itself (restored by the payload builders).
+            parentItem: parentItem ?? annotation.parentItem,
             type: annotation.type,
             authorName: annotation.authorName,
-            text: this.sanitizeQuotesString(annotation.text || ""),
+            text: this.convertService.annoHtml2md(annotation.text || ""),
             comment: this.convertService.annoHtml2md(annotation.comment || ""),
             color: annotation.color,
             pageLabel: annotation.pageLabel,

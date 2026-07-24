@@ -5,6 +5,7 @@ import type { AnnotationJSON } from "types/zotero-reader";
 import type { IParentProxy } from "bridge/types";
 import { ZotFlowError, ZotFlowErrorCode } from "utils/error";
 import { getLocalSidecarPath } from "utils/utils";
+import { annoHtml2md } from "worker/convert";
 import type { AnnotationTemplateContext } from "types/template-context";
 
 /** Default LiquidJS template string for local vault file source notes. */
@@ -25,10 +26,8 @@ zotflow-local-attachment: [[{{ path }}]]
 {%- else -%}
 > > {{ annotation.text | replace: newline, quote_string_2 }}
 {%- endif -%}
-{%- if annotation.comment != "" -%}
 >
-> {{ annotation.comment | replace: newline, quote_string }}
-{%- endif -%}
+> {{ annotation.comment | wrap_editable: "ANNO", annotation.key | replace: newline, quote_string }}
 {%- if annotation.tags and annotation.tags.length > 0 -%}
 >
 > {% for t in annotation.tags %}#{{ t.tag | replace: " ", "\_" }}{% unless forloop.last %} {% endunless %}{% endfor %}
@@ -65,6 +64,31 @@ export class LocalTemplateService {
             };
             return encodeURIComponent(JSON.stringify(navInfo));
         });
+
+        this.engine.registerFilter(
+            "wrap_editable",
+            /**
+             * Wrap content in ZF_<TYPE>_BEG/END markers so the CM6 editable
+             * region extension can mount an editable zone. Mirrors the
+             * library-template filter: consults the per-render
+             * `__zfReadOnlyKeys` set so read-only annotations (external,
+             * extracted from the PDF itself) render as plain locked text.
+             */
+            function (this: any, input: string, type: string, key: string) {
+                if (!type || !key) return input;
+                const readOnlyKeys: Set<string> | undefined =
+                    this?.context?.environments?.__zfReadOnlyKeys;
+                if (readOnlyKeys && readOnlyKeys.has(`${type}:${key}`)) {
+                    return input;
+                }
+                // Always block form: markers on their own lines. An inline
+                // (single-line) layout was tried and retired — a line
+                // starting with `<!--` becomes a CommonMark HTML block, so
+                // markdown inside it renders raw in Reading view; `%%`
+                // markers avoid that but introduce stray blank lines.
+                return `<!-- ZF_${type}_BEG_${key} -->\n${input}\n<!-- ZF_${type}_END_${key} -->`;
+            },
+        );
     }
 
     updateSettings(newSettings: ZotFlowSettings) {
@@ -159,12 +183,6 @@ export class LocalTemplateService {
         }
     }
 
-    private sanitizeQuotesString(str: string | null | undefined): string {
-        if (!str) return "";
-        // Escape > into \> to prevent breaking blockquotes structure in Markdown
-        return str.replace(/>/g, "\\>");
-    }
-
     public async prepareLocalAttachmentContext(
         localAttachment: TFileWithoutParentAndVault,
         annotations: AnnotationJSON[],
@@ -179,8 +197,12 @@ export class LocalTemplateService {
                     libraryID: 0, // Local files imply simplified library context
                     type: annotation.type,
                     authorName: annotation.authorName,
-                    text: this.sanitizeQuotesString(annotation.text),
-                    comment: this.sanitizeQuotesString(annotation.comment),
+                    // Both fields carry Zotero's restricted annotation HTML
+                    // (<b>/<i>/<sub>/<sup>) — convert to markdown, escaping
+                    // stray </> on the way (annoHtml2md subsumes the old
+                    // sanitizeQuotesString).
+                    text: annoHtml2md(annotation.text || ""),
+                    comment: annoHtml2md(annotation.comment || ""),
                     color: annotation.color,
                     pageLabel: annotation.pageLabel,
                     tags:
@@ -206,6 +228,13 @@ export class LocalTemplateService {
             annotations: processedAnnotations,
         };
 
+        // Read-only annotations must not become editable regions —
+        // consumed by the wrap_editable filter.
+        const readOnlyKeys = new Set<string>();
+        for (const anno of processedAnnotations) {
+            if (anno.readOnly) readOnlyKeys.add(`ANNO:${anno.key}`);
+        }
+
         return {
             item,
             settings: {
@@ -213,6 +242,7 @@ export class LocalTemplateService {
                 annotationImageFolder:
                     this.settings.annotationImageFolder.replace(/\/$/, ""),
             },
+            __zfReadOnlyKeys: readOnlyKeys,
         };
     }
 

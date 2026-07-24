@@ -1,5 +1,10 @@
 import { db } from "db/db";
 import { ZotFlowError, ZotFlowErrorCode } from "utils/error";
+import {
+    zotflowToZoteroLinks,
+    zoteroToZotflowLinks,
+} from "worker/convert/note-links";
+import { createDbNoteLinkResolver } from "./note-link-resolver";
 
 import type { IDBZoteroItem } from "types/db-schema";
 import type { NoteData } from "types/zotero-item";
@@ -51,12 +56,24 @@ export class ItemNoteService {
         if (!html.trim()) return "";
 
         const vaultConfig = await this.parentHost.getVaultConfig();
-        return this.convertService.html2md(html, {
+        let md = await this.convertService.html2md(html, {
             annotationImageFolder:
                 this.settings.annotationImageFolder.replace(/\/$/, "") ||
                 undefined,
             strictLineBreaks: vaultConfig.strictLineBreaks,
+            // Always on: display-only anchors, unconditionally stripped
+            // on save — there is no risk for a setting to guard.
+            linkCitationSpans: true,
         });
+
+        // Display native zotero:// links as ZotFlow links. Markdown-side on
+        // purpose: single-param zotero links pass the markdown serializer
+        // unescaped, and the multi-param zotflow links we emit here never
+        // go through a serializer again (see note-links.ts).
+        if (this.settings.convertNoteLinks) {
+            md = await zoteroToZotflowLinks(md, createDbNoteLinkResolver());
+        }
+        return md;
     }
 
     /**
@@ -75,6 +92,18 @@ export class ItemNoteService {
                 ZotFlowErrorCode.RESOURCE_MISSING,
                 "ItemNoteService",
                 `Parent item ${parentKey} not found in library ${libraryID}`,
+            );
+        }
+
+        // Zotero only allows child notes under regular items. Guarding here
+        // covers every entry point (tree view, command palette, file menu).
+        if (
+            ["attachment", "note", "annotation"].includes(parentItem.itemType)
+        ) {
+            throw new ZotFlowError(
+                ZotFlowErrorCode.UNKNOWN,
+                "ItemNoteService",
+                `Cannot create a child note under a ${parentItem.itemType} item`,
             );
         }
 
@@ -164,12 +193,20 @@ export class ItemNoteService {
         const updatedRaw = structuredClone(item.raw);
         const vaultConfig = await this.parentHost.getVaultConfig();
 
-        (updatedRaw.data as any).note = await this.convertService.md2html(
-            content,
-            {
-                strictLineBreaks: vaultConfig.strictLineBreaks,
-            },
-        );
+        let noteHtmlContent = await this.convertService.md2html(content, {
+            strictLineBreaks: vaultConfig.strictLineBreaks,
+        });
+
+        // Canonical storage keeps native zotero:// links so the note
+        // navigates with Zotero's reader after sync.
+        if (this.settings.convertNoteLinks) {
+            noteHtmlContent = await zotflowToZoteroLinks(
+                noteHtmlContent,
+                createDbNoteLinkResolver(),
+            );
+        }
+
+        (updatedRaw.data as any).note = noteHtmlContent;
 
         // Derive title from the updated HTML (same logic as normalize.ts)
         const noteHtml: string = (updatedRaw.data as any).note ?? "";

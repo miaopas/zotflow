@@ -61,6 +61,21 @@ export class GeneralSection {
 
         zoteroSourceNote.addSetting((setting) => {
             setting
+                .setName("Convert Item Note Links")
+                .setDesc(
+                    "Show links inside item notes as ZotFlow links in Obsidian while storing and syncing them as native Zotero links — clicks open ZotFlow's reader here and Zotero's reader there.",
+                )
+                .addToggle((toggle) => {
+                    toggle.setValue(this.plugin.settings.convertNoteLinks);
+                    toggle.onChange(async (value) => {
+                        this.plugin.settings.convertNoteLinks = value;
+                        await this.plugin.saveSettings();
+                    });
+                });
+        });
+
+        zoteroSourceNote.addSetting((setting) => {
+            setting
                 .setName("Lock Editable Regions by Default")
                 .setDesc(
                     "When enabled, editable regions in source notes start locked. Click the lock icon on a region to unlock it for editing.",
@@ -81,7 +96,7 @@ export class GeneralSection {
             setting
                 .setName("Hide Editable Region Markers")
                 .setDesc(
-                    "Hide the ZF_NOTE_BEG / ZF_NOTE_META / ZF_NOTE_END comment tags in source notes. The lock icon and region border remain visible.",
+                    "Hide the ZF_NOTE and ZF_PERSIST comment tags in source notes. The lock icon and region border remain visible.",
                 )
                 .addToggle((toggle) => {
                     toggle.setValue(
@@ -203,6 +218,21 @@ export class GeneralSection {
 
         const generalSettingGroup = new SettingGroup(containerEl);
         generalSettingGroup.setHeading("General Settings");
+
+        generalSettingGroup.addSetting((setting) => {
+            setting
+                .setName("Open Items on Single Click")
+                .setDesc(
+                    "In the tree view, clicking an item's title directly opens it (source note, attachment, or note preview) and only the chevron expands/collapses. When disabled, a click toggles expansion and a double click opens attachments and notes.",
+                )
+                .addToggle((toggle) => {
+                    toggle.setValue(this.plugin.settings.treeSingleClickOpen);
+                    toggle.onChange(async (value) => {
+                        this.plugin.settings.treeSingleClickOpen = value;
+                        await this.plugin.saveSettings();
+                    });
+                });
+        });
 
         generalSettingGroup.addSetting((setting) => {
             setting

@@ -27,6 +27,7 @@ export class LocalReaderView extends ItemView {
     private readerOptions: Partial<CreateReaderOptions> = {};
     private dataManager?: LocalDataManager;
     private knownAnnotationIds = new Set<string>();
+    private unsubscribeLocalAnnotationChanged?: () => void;
 
     constructor(leaf: WorkspaceLeaf) {
         super(leaf);
@@ -156,6 +157,7 @@ export class LocalReaderView extends ItemView {
             if (!this.bridge) {
                 // Initialize data manager
                 this.dataManager = new LocalDataManager(file);
+                this.subscribeToLocalAnnotationChanges(file);
                 this.bridge = new IframeReaderBridge(
                     container,
                     true,
@@ -351,12 +353,45 @@ export class LocalReaderView extends ItemView {
     }
 
     async onClose() {
+        this.unsubscribeLocalAnnotationChanged?.();
+        this.unsubscribeLocalAnnotationChanged = undefined;
+
         if (this.bridge) {
             await this.bridge.dispose();
         }
 
         // Flush view state on close to ensure latest state is saved
         services.viewStateService.flushViewStateSave();
+    }
+
+    /**
+     * Subscribe to comment edits made from the source note's ANNO editable
+     * regions so an open reader reloads the sidecar instead of clobbering
+     * the edit with its stale in-memory cache.
+     */
+    private subscribeToLocalAnnotationChanges(file: TFile) {
+        this.unsubscribeLocalAnnotationChanged?.();
+
+        this.unsubscribeLocalAnnotationChanged =
+            services.taskMonitor.localAnnotationChanged.subscribe(
+                (attachmentPath) => {
+                    if (attachmentPath !== file.path) return;
+                    if (!this.dataManager) return;
+
+                    this.dataManager
+                        .loadAnnotations()
+                        .then((annotations) =>
+                            this.bridge?.refreshAnnotations(annotations),
+                        )
+                        .catch((e) => {
+                            services.logService.error(
+                                "Failed to refresh local reader annotations after markdown edit",
+                                "LocalReaderView",
+                                e,
+                            );
+                        });
+                },
+            );
     }
 
     /**

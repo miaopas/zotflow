@@ -36,6 +36,44 @@ type Check =
 /* ================================================================ */
 
 const tests: TestPoint[] = [
+    // ── Bare URLs (GFM literal autolinks) must round-trip verbatim ──
+    {
+        name: "bare-urls",
+        md: `plain https://example.com text
+
+params https://example.com/?a=1&b=2 here
+
+bare www.example.com site
+
+a [named](https://example.com) link`,
+        checks: [
+            {
+                type: "rt-contains",
+                label: "bare https URL stays bare",
+                needle: "plain https://example.com text",
+            },
+            {
+                type: "rt-contains",
+                label: "bare URL with params stays bare and unescaped",
+                needle: "params https://example.com/?a=1&b=2 here",
+            },
+            {
+                type: "rt-contains",
+                label: "bare www URL stays bare",
+                needle: "bare www.example.com site",
+            },
+            {
+                type: "rt-contains",
+                label: "named link keeps resource form",
+                needle: "a [named](https://example.com) link",
+            },
+            {
+                type: "rt-not-contains",
+                label: "no autolink angle brackets introduced",
+                needle: "<https://example.com>",
+            },
+        ],
+    },
     // ── 1. Paragraphs ──
     {
         name: "paragraphs",

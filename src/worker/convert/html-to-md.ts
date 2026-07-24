@@ -11,7 +11,7 @@ import { unified } from "unified";
 import rehypeRemark from "rehype-remark";
 import remarkStringify from "remark-stringify";
 import { defaultHandlers as defaultRehype2RemarkHandlers } from "hast-util-to-mdast";
-import { toMarkdown } from "mdast-util-to-markdown";
+import { toMarkdown, defaultHandlers } from "mdast-util-to-markdown";
 import { gfmTableToMarkdown } from "mdast-util-gfm-table";
 import { gfmStrikethroughToMarkdown } from "mdast-util-gfm-strikethrough";
 import { toHtml } from "hast-util-to-html";
@@ -19,6 +19,7 @@ import { toText } from "hast-util-to-text";
 import { visitParents } from "unist-util-visit-parents";
 import { visit } from "unist-util-visit";
 import { h } from "hastscript";
+import { wrapCitationSpanLinks } from "./citation-span-links";
 
 import type { CompileResults, Processor } from "unified";
 import type { Node } from "unist";
@@ -251,7 +252,29 @@ function decodeNumericCharRefs(value: string): string {
  * These tell remark-stringify how to serialize our custom mdast node
  * types back to markdown text.
  */
-const mdastStringifyHandlers: Record<string, (node: any) => string> = {
+const mdastStringifyHandlers: Record<
+    string,
+    (node: any, parent: any, state: any, info: any) => string
+> = {
+    /* GFM literal autolinks: a link whose visible text IS its URL was
+     * autolinked from a bare URL the user typed. Re-emit the bare text
+     * instead of `<url>` / `[text](url)` so plain URLs round-trip
+     * verbatim — the next parse re-linkifies them identically. */
+    link: (node, parent, state, info) => {
+        const child =
+            node.children?.length === 1 ? node.children[0] : null;
+        if (child?.type === "text" && !node.title) {
+            const text: string = child.value ?? "";
+            const url: string = node.url ?? "";
+            const isLiteralAutolink =
+                (text === url && /^https?:\/\//i.test(url)) ||
+                (url === `http://${text}` && /^www\./i.test(text)) ||
+                url === `mailto:${text}`;
+            if (isLiteralAutolink) return text;
+        }
+        return defaultHandlers.link(node, parent, state, info);
+    },
+
     /* marks serialized as HTML (no native md syntax) */
     u: (n) => `<u>${n.value}</u>`,
     sub: (n) => `<sub>${n.value}</sub>`,
@@ -704,6 +727,11 @@ export interface Html2MdOptions {
      * `\n` is treated as a soft break and would be lost).
      */
     strictLineBreaks?: boolean;
+    /**
+     * Wrap Zotero annotation/citation spans with clickable zotflow anchors
+     * (see citation-span-links.ts). Display-only — md2html strips them.
+     */
+    linkCitationSpans?: boolean;
 }
 
 /** Marker prefix for the wrapper-div metadata comment (`<!-- ZF_NOTE_META ... -->`). */
@@ -728,6 +756,13 @@ export async function html2mdWithProcessors(
 ): Promise<string> {
     const { tree, wrapperAttrs } = parseNoteHtml(html, rehypeParser);
 
+    // Make Zotero annotation/citation spans clickable in Obsidian by
+    // wrapping their contents with zotflow anchors. The spans (and their
+    // payloads) stay intact; md2html strips the anchors on the way back.
+    if (options?.linkCitationSpans) {
+        wrapCitationSpanLinks(tree as any);
+    }
+
     const remark = (await unified()
         .use(rehypeRemark, {
             // Preserve hand-written line breaks inside paragraphs so that
@@ -751,6 +786,8 @@ export async function html2mdWithProcessors(
 
     let md = remarkToMarkdown(remark, remarkStringifier);
 
+    md = unescapeAmpersandInDestinations(md);
+
     // Prepend an HTML comment with the wrapper div's metadata so md2html
     // can reconstruct the wrapper on the way back. The CM6 meta extension
     // collapses and protects this line in Source Mode.
@@ -759,4 +796,24 @@ export async function html2mdWithProcessors(
     }
 
     return md;
+}
+
+/**
+ * mdast-util-to-markdown defensively escapes `&` in link/image
+ * destinations (`\&`) to rule out ambiguity with character references.
+ * Obsidian does NOT unescape backslash sequences when resolving the
+ * clicked URL, so every destination containing `&` breaks. A raw `&` is
+ * perfectly valid CommonMark inside a destination (only parentheses and
+ * whitespace are structural there), so strip the escape. Applies inside
+ * `](…)` destinations only — a `\&` in prose stays untouched.
+ */
+function unescapeAmpersandInDestinations(md: string): string {
+    if (!md.includes("\\&")) return md;
+    // NB: the destination alternatives must be disjoint (backslash is
+    // excluded from the char class) — an ambiguous `(?:\\.|[^()\s])+`
+    // backtracks exponentially on `](` followed by a run of backslashes
+    // with no closing paren.
+    return md.replace(/\]\(((?:[^()\s\\]|\\.)+)\)/g, (match, dest: string) =>
+        dest.includes("\\&") ? `](${dest.replace(/\\&/g, "&")})` : match,
+    );
 }

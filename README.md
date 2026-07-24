@@ -230,4 +230,10 @@ Have ideas or found a bug? Join the Discord!
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=duanxianpi/obsidian-zotflow&type=date&legend=top-left)](https://www.star-history.com/#duanxianpi/obsidian-zotflow&type=date&legend=top-left)
+<a href="https://www.star-history.com/?repos=duanxianpi%2Fzotflow&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=duanxianpi/zotflow&type=date&theme=dark&legend=top-left&sealed_token=e8kUPFUYLwmk422vXhMsmDkyIhfh7d2OOS7MkZy9pTv7BOKo-bD_u7zJltqIE4y_rENgic0E_c7oCCkOuLy45s8abvMeT0zg8o3Che_nX3VLtkulbYNN6psab5MkyJ_F1cvze5qrZBnmCL5FFBSQlqWG74C7_EFdl7TmvLiGhFYSZS1rECOuFYTiI-C7" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=duanxianpi/zotflow&type=date&legend=top-left&sealed_token=e8kUPFUYLwmk422vXhMsmDkyIhfh7d2OOS7MkZy9pTv7BOKo-bD_u7zJltqIE4y_rENgic0E_c7oCCkOuLy45s8abvMeT0zg8o3Che_nX3VLtkulbYNN6psab5MkyJ_F1cvze5qrZBnmCL5FFBSQlqWG74C7_EFdl7TmvLiGhFYSZS1rECOuFYTiI-C7" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=duanxianpi/zotflow&type=date&legend=top-left&sealed_token=e8kUPFUYLwmk422vXhMsmDkyIhfh7d2OOS7MkZy9pTv7BOKo-bD_u7zJltqIE4y_rENgic0E_c7oCCkOuLy45s8abvMeT0zg8o3Che_nX3VLtkulbYNN6psab5MkyJ_F1cvze5qrZBnmCL5FFBSQlqWG74C7_EFdl7TmvLiGhFYSZS1rECOuFYTiI-C7" />
+ </picture>
+</a>

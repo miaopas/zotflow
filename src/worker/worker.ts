@@ -1,4 +1,5 @@
 import * as Comlink from "comlink";
+import { setProxiedFetch } from "./proxied-fetch";
 import { ZoteroAPIService } from "./services/zotero";
 import { SyncService } from "./services/sync";
 import { AttachmentService } from "./services/attachment";
@@ -19,6 +20,7 @@ import { TagService } from "./services/tag";
 import { NotePathService } from "./services/note-path";
 import { ConvertService } from "./services/convert";
 import { ItemNoteService } from "./services/item-note";
+import { CslRenderWorkerService } from "./services/csl-render";
 import { TaskManager } from "./tasks/manager";
 import { ZotFlowError, ZotFlowErrorCode } from "utils/error";
 
@@ -67,6 +69,7 @@ export interface WorkerAPI {
     libraryTemplate: LibraryTemplateService;
     localTemplate: LocalTemplateService;
     notePath: NotePathService;
+    cslRender: CslRenderWorkerService;
     tasks: TaskManager;
     updateSettings(settings: ZotFlowSettings): void;
 
@@ -80,6 +83,7 @@ export interface WorkerAPI {
     createBatchExtractImagesTask(
         input: BatchExtractImagesInput,
     ): Promise<string>;
+    createBackfillCslJsonTask(): Promise<string>;
     downloadAttachment(
         attachmentItem: IDBZoteroItem<AttachmentData>,
     ): Promise<Blob>;
@@ -110,6 +114,7 @@ let _tag: TagService | undefined;
 let _notePath: NotePathService | undefined;
 let _convert: ConvertService | undefined;
 let _pdfProcessor: PDFProcessWorker | undefined;
+let _cslRender: CslRenderWorkerService | undefined;
 let _taskManager: TaskManager | undefined;
 let _currentSettings: ZotFlowSettings | undefined;
 
@@ -135,6 +140,7 @@ function assertInitialized() {
         !_tag ||
         !_notePath ||
         !_convert ||
+        !_cslRender ||
         !_taskManager ||
         !_currentSettings
     ) {
@@ -154,7 +160,7 @@ const exposedApi: WorkerAPI = {
     ) => {
         // Patch global fetch to proxy through Obsidian Main Thread
         (globalThis as any).originalFetch = (globalThis as any).fetch;
-        (globalThis as any).fetch = async (url: string, init?: RequestInit) => {
+        const proxiedFetchImpl = async (url: string, init?: RequestInit) => {
             try {
                 const response = await parentHost.request({
                     url: url,
@@ -187,6 +193,11 @@ const exposedApi: WorkerAPI = {
                 );
             }
         };
+        (globalThis as any).fetch = proxiedFetchImpl;
+
+        // Also expose via module import (see proxied-fetch.ts) so worker
+        // code can use it without referencing lint-restricted globals.
+        setProxiedFetch(proxiedFetchImpl);
 
         try {
             _zotero = new ZoteroAPIService(settings.zoteroapikey);
@@ -222,12 +233,16 @@ const exposedApi: WorkerAPI = {
             _notePath = new NotePathService(settings, _dbHelper);
             _convert = new ConvertService();
 
+            _cslRender = new CslRenderWorkerService(settings);
+
             _template = new LibraryTemplateService(
                 settings,
                 parentHost,
                 _dbHelper,
                 _notePath,
                 _convert,
+                _cslRender,
+                _zotero,
             );
             _libraryNote = new LibraryNoteService(
                 settings,
@@ -471,9 +486,20 @@ const exposedApi: WorkerAPI = {
         return Comlink.proxy(_notePath);
     },
 
+    get cslRender() {
+        if (!_cslRender)
+            throw new ZotFlowError(
+                ZotFlowErrorCode.UNKNOWN,
+                "Worker",
+                "Worker not initialized",
+            );
+        return Comlink.proxy(_cslRender);
+    },
+
     dispose: () => {
         _libraryNote?.dispose();
         _localNote?.dispose();
+        _cslRender?.dispose();
     },
 
     /* ================================================================ */
@@ -512,6 +538,11 @@ const exposedApi: WorkerAPI = {
             _currentSettings!,
             input,
         );
+    },
+
+    createBackfillCslJsonTask: async () => {
+        assertInitialized();
+        return _taskManager!.createBackfillCslJsonTask(_zotero!);
     },
 
     downloadAttachment: async (
@@ -557,6 +588,7 @@ const exposedApi: WorkerAPI = {
         _dbHelper!.updateSettings(settings);
         _tag!.updateSettings(settings);
         _pdfProcessor!.updateSettings(settings);
+        _cslRender!.updateSettings(settings);
         _currentSettings = settings;
     },
 };

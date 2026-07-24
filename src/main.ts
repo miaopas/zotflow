@@ -37,6 +37,7 @@ import { checkFile, readTextFile, renameFile, deleteFile } from "utils/file";
 import { ActivityCenterModal } from "ui/activity-center/modal";
 import { ZoteroSearchModal } from "ui/modals/suggest";
 import { AttachmentSelectModal } from "ui/modals/attachment-suggest";
+import { CslFolderService } from "services/csl-folder-service";
 
 import type {
     ZotFlowSettings,
@@ -64,6 +65,7 @@ export default class ZotFlow extends Plugin {
     settings: ZotFlowSettings;
     viewStates: Record<string, ViewStateEntry>;
     customThemes: CustomReaderTheme[] = [];
+    cslFolder: CslFolderService;
     private citationSuggest: CitationSuggest;
     private sourceNoteActionElements = new WeakMap<MarkdownView, HTMLElement>();
 
@@ -276,6 +278,18 @@ export default class ZotFlow extends Plugin {
         });
 
         this.addCommand({
+            id: "update-all-csl-data",
+            name: "Update CSL citation data for all items",
+            callback: async () => {
+                await this.runTaskCommand(
+                    () => workerBridge.createBackfillCslJsonTask(),
+                    "CSL citation data update started",
+                    "Failed to start CSL citation data update",
+                );
+            },
+        });
+
+        this.addCommand({
             id: "extract-all-annotation-images",
             name: "Extract all annotation images from attachments",
             callback: async () => {
@@ -406,6 +420,7 @@ export default class ZotFlow extends Plugin {
             this.app.vault.on("rename", (file, oldPath) => {
                 services.viewStateService.renameViewState(oldPath, file.path);
                 this.handleSidecarRename(file, oldPath);
+                void this.cslFolder.onRename(file, oldPath);
             }),
         );
 
@@ -414,8 +429,28 @@ export default class ZotFlow extends Plugin {
             this.app.vault.on("delete", (file) => {
                 services.viewStateService.deleteViewState(file.path);
                 this.handleSidecarDelete(file);
+                void this.cslFolder.onDelete(file);
             }),
         );
+
+        // Hot-load custom CSL styles/locales from the configured vault folder.
+        // create/modify are registered after layout-ready: "create" fires for
+        // every existing file during startup indexing otherwise.
+        this.cslFolder = new CslFolderService(this.app.vault);
+        this.cslFolder.setFolder(this.settings.cslStylesFolder);
+        this.app.workspace.onLayoutReady(() => {
+            void this.cslFolder.rescan();
+            this.registerEvent(
+                this.app.vault.on("create", (file) => {
+                    void this.cslFolder.onCreateOrModify(file);
+                }),
+            );
+            this.registerEvent(
+                this.app.vault.on("modify", (file) => {
+                    void this.cslFolder.onCreateOrModify(file);
+                }),
+            );
+        });
 
         // Add right-click "Update source note" entries for source notes
         this.registerEvent(
@@ -580,6 +615,11 @@ export default class ZotFlow extends Plugin {
 
             if (type === "open-note") {
                 await workerBridge.libraryNote.openNote(libID, key);
+            } else if (type === "open-item-note") {
+                // Child note links (e.g. converted Better Notes
+                // zotero://note links) — openItemNote honors the
+                // alwaysOpenChildNoteInEditor setting.
+                await openItemNote(libID, key, this.app);
             } else if (type === "open-attachment") {
                 await openAttachment(libID, key, this.app, navigation);
             } else if (type === "open-annotation") {

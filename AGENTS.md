@@ -271,6 +271,7 @@ src/
 │   ├── log-service.ts              # In-memory log buffer (max 1000)
 │   ├── notification-service.ts     # Styled Obsidian Notice wrapper
 │   ├── task-monitor.ts             # Pub/sub for task progress updates
+│   ├── csl-folder-service.ts       # Vault folder watcher feeding .csl/locale XML to the worker
 │   └── view-state-service.ts       # Reader view state persistence
 │
 ├── settings/
@@ -280,6 +281,7 @@ src/
 │       ├── general-section.ts      # Template paths, folders, toggles
 │       ├── sync-section.ts         # API key, library sync modes
 │       ├── cache-section.ts        # Cache toggle, limit, purge
+│       ├── csl-section.ts          # CSL renderer: default style/format, styles folder, cache
 │       └── webdav-section.ts       # WebDAV URL/user/password
 │
 ├── types/
@@ -314,11 +316,16 @@ src/
 │   │   ├── modal.tsx               # ActivityCenterModal (Obsidian Modal wrapper)
 │   │   ├── ZotFlowActivityCenter.tsx # Tab container component
 │   │   ├── SyncView.tsx            # Sync tab content (stub)
-│   │   └── TemplateTestView.tsx    # Template testing tab
+│   │   ├── TemplateTestView.tsx    # Template testing tab
+│   │   ├── CslStylesView.tsx       # CSL tab: styles (aliases nested under parents) & locales
+│   │   └── CslRows.tsx             # CSL tab row components (status dot, badges, alias rows)
 │   └── modals/
 │       ├── suggest.ts              # BaseItemSearchModal + ZoteroSearchModal
 │       ├── item-picker.ts          # ItemPickerModal (extends BaseItemSearchModal)
-│       └── file-picker.ts          # FilePickerModal (local vault file picker)
+│       ├── file-picker.ts          # FilePickerModal (local vault file picker)
+│       ├── csl-add-modal.ts        # AddCslStyleModal / AddCslLocaleModal (fetch-by-id preview + add)
+│       ├── csl-details-modal.ts    # StyleDetailsModal (state-aware actions for installed styles)
+│       └── csl-style-details.ts    # Shared StyleDetails block (meta table + deps + preview)
 │
 ├── worker/
 │   ├── worker.ts                   # Worker entry point — exposes WorkerAPI via Comlink
@@ -336,7 +343,10 @@ src/
 │   │   ├── pdf-processor.ts        # PDFProcessWorker (nested Worker for PDF.js)
 │   │   ├── annotation.ts           # AnnotationService (reader annotation CRUD)
 │   │   ├── key.ts                  # KeyService (API key verify, library metadata)
+│   │   ├── csl-render.ts           # CslRenderWorkerService (CSL rendering; wraps worker/csl core)
 │   │   └── db-helper.ts            # DbHelperService (general-purpose DB queries)
+│   ├── csl/                        # Vendored csl-render core (citeproc wrapper; platform
+│   │                               #   agnostic, relative imports, WORKER-ONLY via services)
 │   └── tasks/
 │       ├── base.ts                 # BaseTask abstract (id, status, progress)
 │       ├── manager.ts              # TaskManager (register, start, cancel)
@@ -366,6 +376,7 @@ src/
 | `dexie`               | IndexedDB wrapper                  | Worker                     |
 | `zotero-api-client`   | Zotero Web API                     | Worker (via proxied fetch) |
 | `liquidjs`            | Note template rendering            | Worker                     |
+| `citeproc`            | CSL citation/bibliography engine   | Worker                     |
 | `fflate`              | gzip decompression (reader assets) | Main                       |
 | `spark-md5`           | File integrity (attachment cache)  | Worker                     |
 | `p-limit`             | Concurrency control                | Worker                     |
@@ -387,6 +398,8 @@ npm run build:plugin   # Production build: tsc check + esbuild (plugin only)
 npm run build:reader   # Production build: webpack prod mode (reader only)
 npm run build        # Production build: reader + plugin
 npm run build:ci     # Full CI: build pdf.js + reader + plugin
+npm run test:csl     # CSL core assertions (plain Node script, no framework;
+                     #   downloads fixtures into scripts/.csl-fixtures once)
 npm run lint         # eslint
 ```
 
@@ -600,6 +613,7 @@ via the Comlink `WorkerBridge`.
 | `collections` | `++localID` | `[libraryID+key]`, `[libraryID+parentCollection]`, `libraryID`                                             |
 | `libraries`   | `id`        | —                                                                                                          |
 | `files`       | `++localID` | `[libraryID+key]`, `lastAccessed`                                                                          |
+| `cslCache`    | `key`       | — (v5; string KV cache for CSL styles/locales/index)                                                       |
 
 ### Rules
 

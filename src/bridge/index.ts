@@ -28,6 +28,7 @@ import type { PDFProcessWorker } from "worker/services/pdf-processor";
 import type { LibraryTemplateService } from "worker/services/library-template";
 import type { LocalTemplateService } from "worker/services/local-template";
 import type { NotePathService } from "worker/services/note-path";
+import type { CslRenderWorkerService } from "worker/services/csl-render";
 import type { BatchNoteInput } from "worker/tasks/impl/batch-note-task";
 import type {
     BatchExtractImagesInput,
@@ -67,6 +68,7 @@ export class WorkerBridge {
     private _libraryTemplate: LibraryTemplateService;
     private _localTemplate: LocalTemplateService;
     private _notePath: NotePathService;
+    private _cslRender: CslRenderWorkerService;
     private _tasks: TaskManager;
 
     private _workerBlobUrl: string;
@@ -108,6 +110,7 @@ export class WorkerBridge {
         this._libraryTemplate = await this._api.libraryTemplate;
         this._localTemplate = await this._api.localTemplate;
         this._notePath = await this._api.notePath;
+        this._cslRender = await this._api.cslRender;
         this._tasks = await this._api.tasks;
 
         this._initialized = true;
@@ -218,6 +221,11 @@ export class WorkerBridge {
         return this._notePath;
     }
 
+    get cslRender() {
+        this.assertInitialized();
+        return this._cslRender;
+    }
+
     get tasks() {
         this.assertInitialized();
         return this._tasks;
@@ -246,6 +254,11 @@ export class WorkerBridge {
     ): Promise<string> {
         this.assertInitialized();
         return this._api.createBatchExtractImagesTask(input);
+    }
+
+    async createBackfillCslJsonTask(): Promise<string> {
+        this.assertInitialized();
+        return this._api.createBackfillCslJsonTask();
     }
 
     async downloadAttachment(

@@ -54,6 +54,32 @@ type Check =
 /* ================================================================ */
 
 const tests: TestPoint[] = [
+    {
+        name: "link destinations with ampersands",
+        html: `<p><a href="https://example.com/?a=1&amp;b=2">multi param</a> and <a href="obsidian://zotflow?type=open-note&amp;libraryID=1&amp;key=K">zotflow</a></p>`,
+        checks: [
+            {
+                type: "md-contains",
+                label: "raw & in web destination (no backslash escape)",
+                needle: "(https://example.com/?a=1&b=2)",
+            },
+            {
+                type: "md-contains",
+                label: "raw & in zotflow destination",
+                needle: "(obsidian://zotflow?type=open-note&libraryID=1&key=K)",
+            },
+            {
+                type: "md-not-contains",
+                label: "no \\& anywhere",
+                needle: "\\&",
+            },
+            {
+                type: "contains",
+                label: "web href survives round trip",
+                needle: 'href="https://example.com/?a=1&#x26;b=2"',
+            },
+        ],
+    },
     // ── 1. Paragraph with inline marks ──
     {
         name: "paragraph-marks",

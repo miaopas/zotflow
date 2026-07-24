@@ -39,6 +39,17 @@ function hasLibraryId(state: EditorState): boolean {
     return getLibraryId(state) !== undefined;
 }
 
+/** Check whether this is a local attachment source note. */
+function isLocalNote(state: EditorState): boolean {
+    if (state.doc.sliceString(0, 3) !== "---") return false;
+    const head = state.doc.sliceString(0, 10000);
+    const fmMatch = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(
+        head,
+    );
+    if (!fmMatch) return false;
+    return /^zotflow-local-attachment:/m.test(fmMatch[0]);
+}
+
 /* ================================================================ */
 /*  Unlock icon widget                                              */
 /* ================================================================ */
@@ -132,8 +143,8 @@ class RegionBorderPlugin {
     }
 
     private rebuild() {
-        // No library-id → not a ZotFlow source note, skip border overlays
-        if (!hasLibraryId(this.view.state)) {
+        // Not a ZotFlow source note (library or local) → skip border overlays
+        if (!hasLibraryId(this.view.state) && !isLocalNote(this.view.state)) {
             if (this.overlays.length > 0) {
                 for (const el of this.overlays) el.remove();
                 this.overlays = [];
@@ -165,10 +176,12 @@ class RegionBorderPlugin {
             left: number;
             width: number;
             height: number;
+            type: string;
         }[] = [];
         for (const region of regions) {
-            // Only draw borders for NOTE regions
-            if (region.type !== "NOTE") continue;
+            // Borders for block-level regions (ANNO lives inside blockquotes
+            // and gets no frame)
+            if (region.type !== "NOTE" && region.type !== "PERSIST") continue;
 
             const topBlock = this.view.lineBlockAt(region.begFrom);
             const bottomBlock = this.view.lineBlockAt(region.endTo);
@@ -181,12 +194,13 @@ class RegionBorderPlugin {
                 left: left - pad,
                 width: width + pad * 2,
                 height,
+                type: region.type,
             });
         }
 
         // Skip DOM work if positions haven't changed
         const positionKey = positions
-            .map((p) => `${p.top},${p.left},${p.width},${p.height}`)
+            .map((p) => `${p.top},${p.left},${p.width},${p.height},${p.type}`)
             .join("|");
         if (positionKey === this.lastPositionKey) return;
         this.lastPositionKey = positionKey;
@@ -196,7 +210,7 @@ class RegionBorderPlugin {
 
         for (const p of positions) {
             const el = document.createElement("div");
-            el.className = "cm-zotflow-region-border-overlay";
+            el.className = `cm-zotflow-region-border-overlay cm-zotflow-region-border-overlay-${p.type.toLowerCase()}`;
             el.style.top = `${p.top}px`;
             el.style.left = `${p.left}px`;
             el.style.width = `${p.width}px`;
@@ -238,9 +252,10 @@ export function ZotFlowRegionDecorationExtension(
         EditorView.decorations.compute(
             [editableRegionsField, unlockedRegionsField],
             (state) => {
-                // No library-id → not a ZotFlow source note, skip all decorations
+                // Not a ZotFlow source note (library or local) → skip all decorations
                 const libraryId = getLibraryId(state);
-                if (libraryId === undefined) return Decoration.none;
+                const local = libraryId === undefined && isLocalNote(state);
+                if (libraryId === undefined && !local) return Decoration.none;
 
                 const regions = state.field(editableRegionsField, false);
                 if (!regions) return Decoration.none;
@@ -249,7 +264,9 @@ export function ZotFlowRegionDecorationExtension(
                     state.field(unlockedRegionsField, false) ??
                     new Set<string>();
 
+                // Local notes have no library permissions — never disabled.
                 const lockDisabled =
+                    libraryId !== undefined &&
                     !services.libraryCache.canEditNotes(libraryId);
 
                 const ranges: {
@@ -279,7 +296,10 @@ export function ZotFlowRegionDecorationExtension(
                             inclusive: true,
                         }),
                     });
-                    // Unlock icon widget after BEG marker text
+                    // Unlock icon widget after the BEG marker text. (With
+                    // block-form regions the marker owns its line, so the
+                    // icon sits at the line end, away from the content that
+                    // starts on the next line.)
                     const regionUnlocked = isDefaultLocked()
                         ? unlocked.has(region.key) // default locked → toggle set = unlocked keys
                         : !unlocked.has(region.key); // default unlocked → toggle set = locked keys
@@ -290,20 +310,25 @@ export function ZotFlowRegionDecorationExtension(
                             widget: new UnlockIconWidget(
                                 region.key,
                                 regionUnlocked,
-                                lockDisabled,
+                                // PERSIST is local-only: editable even in
+                                // read-only libraries.
+                                lockDisabled && region.type !== "PERSIST",
                             ),
                             side: 1,
                         }),
                     });
 
-                    // END marker: accent background
-                    ranges.push({
-                        from: endLine.from,
-                        to: endLine.from,
-                        deco: Decoration.line({
-                            class: `cm-zotflow-end-line cm-zotflow-end-line-${typeClass}`,
-                        }),
-                    });
+                    // END marker: accent background (skip when the region is
+                    // inline — BEG already decorated this line)
+                    if (endLine.from !== begLine.from) {
+                        ranges.push({
+                            from: endLine.from,
+                            to: endLine.from,
+                            deco: Decoration.line({
+                                class: `cm-zotflow-end-line cm-zotflow-end-line-${typeClass}`,
+                            }),
+                        });
+                    }
                     ranges.push({
                         from: region.endFrom,
                         to: region.endTo,
@@ -368,6 +393,11 @@ export function ZotFlowRegionDecorationExtension(
                 pointerEvents: "none",
             },
 
+            /* Persist regions: local-only — solid frame in a muted distinct hue */
+            ".cm-zotflow-region-border-overlay-persist": {
+                border: "1.5px solid color-mix(in srgb, var(--color-orange) 40%, transparent)",
+            },
+
             /* BEG marker: subtle accent background */
             ".cm-zotflow-beg-line": {
                 backgroundColor:
@@ -380,13 +410,21 @@ export function ZotFlowRegionDecorationExtension(
                     "color-mix(in srgb, var(--interactive-accent) 6%, transparent)",
             },
 
+            /* Persist marker lines: muted tint matching the persist frame.
+               Compound selectors out-rank the generic beg/end rules above. */
+            ".cm-zotflow-beg-line.cm-zotflow-beg-line-persist, .cm-zotflow-end-line.cm-zotflow-end-line-persist":
+                {
+                    backgroundColor:
+                        "color-mix(in srgb, var(--color-orange) 5%, transparent)",
+                },
+
             /* Marker text: small muted */
             ".cm-zotflow-tag-text": {
                 fontSize: "var(--font-smallest)",
                 color: "var(--text-muted)",
             },
 
-            /* Unlock icon */
+            /* Unlock icon (sits right of the BEG marker) */
             ".cm-zotflow-unlock-icon": {
                 display: "inline-flex",
                 alignItems: "center",

@@ -6,184 +6,20 @@ import {
     type Text,
 } from "@codemirror/state";
 import { ViewPlugin, type ViewUpdate } from "@codemirror/view";
+import { TFile } from "obsidian";
 import { workerBridge } from "bridge";
+import { services } from "services/services";
+import { LocalDataManager } from "ui/reader/local-data-manager";
+import {
+    parseEditableRegions,
+    type EditableRegion,
+} from "./editable-region-parser";
 
 /* ================================================================ */
-/*  Marker Registry                                                 */
+/*  Parser (extracted to editable-region-parser.ts — pure, testable) */
 /* ================================================================ */
 
-interface MarkerType {
-    begPrefix: string;
-    endPrefix: string;
-    type: string;
-}
-
-const MARKER_REGISTRY: MarkerType[] = [
-    { begPrefix: "ZF_NOTE_BEG_", endPrefix: "ZF_NOTE_END_", type: "NOTE" },
-    { begPrefix: "ZF_ANNO_BEG_", endPrefix: "ZF_ANNO_END_", type: "ANNO" },
-];
-
-/* ================================================================ */
-/*  EditableRegion                                                  */
-/* ================================================================ */
-
-export interface EditableRegion {
-    /** Marker category — e.g. "NOTE", future "ANNO". */
-    type: string;
-    /** Zotero item key extracted from marker (e.g. the note key). */
-    key: string;
-    /** Editable content start (first char after BEG marker line). */
-    from: number;
-    /** Editable content end (last char before END marker line). */
-    to: number;
-    /** BEG marker line start offset. */
-    begFrom: number;
-    /** BEG marker line end offset. */
-    begTo: number;
-    /** END marker line start offset. */
-    endFrom: number;
-    /** END marker line end offset. */
-    endTo: number;
-    /** `<!-- ZF_NOTE_META ... -->` start offset (if present inside region). */
-    metaFrom?: number;
-    /** `<!-- ZF_NOTE_META ... -->` end offset (if present inside region). */
-    metaTo?: number;
-}
-
-/* ================================================================ */
-/*  Parser                                                          */
-/* ================================================================ */
-
-/** Build a single regex that matches all registered BEG/END markers. */
-function buildMarkerRegex(): RegExp {
-    const prefixes: string[] = [];
-    for (const m of MARKER_REGISTRY) {
-        prefixes.push(m.begPrefix, m.endPrefix);
-    }
-    // Escape regex-special chars in prefixes (defensive)
-    const escaped = prefixes.map((p) =>
-        p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-    );
-    // Match: <!-- <PREFIX><KEY> -->
-    return new RegExp(`<!-- (${escaped.join("|")})(\\w+) -->`, "g");
-}
-
-const MARKER_REGEX = buildMarkerRegex();
-
-interface ParsedMarker {
-    type: string;
-    role: "beg" | "end";
-    key: string;
-    lineFrom: number;
-    lineTo: number;
-}
-
-/** Single-pass parse of all editable regions in the document. */
-export function parseEditableRegions(doc: Text): EditableRegion[] {
-    const text = doc.toString();
-    MARKER_REGEX.lastIndex = 0;
-
-    const markers: ParsedMarker[] = [];
-
-    let match;
-    while ((match = MARKER_REGEX.exec(text))) {
-        const prefix = match[1]!;
-        const key = match[2]!;
-
-        // Find which registry entry this prefix belongs to
-        let markerType: MarkerType | undefined;
-        let role: "beg" | "end" | undefined;
-        for (const m of MARKER_REGISTRY) {
-            if (prefix === m.begPrefix) {
-                markerType = m;
-                role = "beg";
-                break;
-            }
-            if (prefix === m.endPrefix) {
-                markerType = m;
-                role = "end";
-                break;
-            }
-        }
-        if (!markerType || !role) continue;
-
-        const line = doc.lineAt(match.index);
-        markers.push({
-            type: markerType.type,
-            role,
-            key,
-            lineFrom: line.from,
-            lineTo: line.to,
-        });
-    }
-
-    // Pair BEG with the nearest following END of the same type+key
-    const regions: EditableRegion[] = [];
-    const used = new Set<number>();
-
-    for (let i = 0; i < markers.length; i++) {
-        const beg = markers[i]!;
-        if (beg.role !== "beg" || used.has(i)) continue;
-
-        for (let j = i + 1; j < markers.length; j++) {
-            const end = markers[j]!;
-            if (used.has(j)) continue;
-            if (
-                end.role !== "end" ||
-                end.type !== beg.type ||
-                end.key !== beg.key
-            )
-                continue;
-
-            // Editable content starts after the BEG line's newline
-            const editFrom = beg.lineTo + 1;
-            // Editable content ends at the char before the END line
-            const editTo = end.lineFrom > 0 ? end.lineFrom - 1 : end.lineFrom;
-
-            // Only create region if there's a valid range
-            if (editFrom <= editTo) {
-                regions.push({
-                    type: beg.type,
-                    key: beg.key,
-                    from: editFrom,
-                    to: editTo,
-                    begFrom: beg.lineFrom,
-                    begTo: beg.lineTo,
-                    endFrom: end.lineFrom,
-                    endTo: end.lineTo,
-                });
-            }
-
-            used.add(i);
-            used.add(j);
-            break;
-        }
-    }
-
-    // Detect <!-- ZF_NOTE_META ... --> inside NOTE regions only.
-    // Uses the global flag + lastIndex to scan within each region's bounds
-    // on the already-allocated `text` string — avoids a .slice() per region.
-    const META_REGEX_G = /<!-- ZF_NOTE_META [\s\S]*?-->/g;
-    for (const region of regions) {
-        if (region.type !== "NOTE") continue;
-
-        META_REGEX_G.lastIndex = region.from;
-        const metaMatch = META_REGEX_G.exec(text);
-        if (metaMatch && metaMatch.index < region.to) {
-            region.metaFrom = metaMatch.index;
-            region.metaTo = metaMatch.index + metaMatch[0]!.length;
-
-            // Move editable start past the meta line
-            const metaLine = doc.lineAt(region.metaTo);
-            const newFrom = metaLine.to + 1;
-            if (newFrom <= region.to) {
-                region.from = newFrom;
-            }
-        }
-    }
-
-    return regions;
-}
+export { parseEditableRegions, type EditableRegion };
 
 /* ================================================================ */
 /*  StateField                                                      */
@@ -276,6 +112,29 @@ function getLibraryId(doc: Text): number | null {
     return match?.[1] ? Number(match[1]) : null;
 }
 
+/** Extract the local attachment path from `zotflow-local-attachment: "[[path]]"`. */
+export function getLocalAttachmentPath(doc: Text): string | null {
+    if (doc.sliceString(0, 3) !== "---") return null;
+
+    const head = doc.sliceString(0, 10000);
+    const fmMatch = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(
+        head,
+    );
+    if (!fmMatch) return null;
+
+    const match =
+        /^zotflow-local-attachment:\s*["']?\[\[(.+?)\]\]["']?\s*$/m.exec(
+            fmMatch[0],
+        );
+
+    return match?.[1] ?? null;
+}
+
+/** Where region edits should be saved: a Zotero library or a local sidecar. */
+type SyncTarget =
+    | { kind: "zotero"; libraryId: number }
+    | { kind: "local"; attachmentPath: string };
+
 /* ================================================================ */
 /*  ViewPlugin — sync edits to Worker                               */
 /* ================================================================ */
@@ -304,29 +163,48 @@ const editableRegionSyncPlugin = ViewPlugin.fromClass(
             );
             if (!isUserEdit) return;
 
-            const libraryId = getLibraryId(update.state.doc);
-            if (libraryId === null) return;
-
             const regions = update.state.field(editableRegionsField, false);
             if (!regions || regions.length === 0) return;
+
+            const libraryId = getLibraryId(update.state.doc);
+            let target: SyncTarget | null = null;
+            if (libraryId !== null) {
+                target = { kind: "zotero", libraryId };
+            } else {
+                const attachmentPath = getLocalAttachmentPath(
+                    update.state.doc,
+                );
+                if (attachmentPath !== null) {
+                    target = { kind: "local", attachmentPath };
+                }
+            }
+            if (!target) return;
 
             // Find which regions were touched by the changes
             update.changes.iterChangedRanges((fromA, toA) => {
                 for (const region of regions) {
                     // Check if the change range overlaps this region's editable zone
                     if (fromA <= region.to && toA >= region.from) {
-                        this.scheduleSync(libraryId, region, update.state);
+                        this.scheduleSync(target, region, update.state);
                     }
                 }
             });
         }
 
         private scheduleSync(
-            libraryId: number,
+            target: SyncTarget,
             region: EditableRegion,
             state: EditorState,
         ) {
-            const debounceKey = `${libraryId}-${region.key}`;
+            // PERSIST regions are purely local — never sync them anywhere.
+            if (region.type === "PERSIST") return;
+            // Local notes only carry ANNO regions.
+            if (target.kind === "local" && region.type !== "ANNO") return;
+
+            const debounceKey =
+                target.kind === "zotero"
+                    ? `${target.libraryId}-${region.key}`
+                    : `${target.attachmentPath}-${region.key}`;
 
             // Clear previous timer for this region
             const existing = this.debouncers.get(debounceKey);
@@ -338,6 +216,7 @@ const editableRegionSyncPlugin = ViewPlugin.fromClass(
                 this.debouncers.delete(debounceKey);
 
                 if (region.type === "NOTE") {
+                    if (target.kind !== "zotero") return;
                     // NOTE regions: include meta comment for wrapper-div
                     // attributes reconstruction, then convert MD → HTML.
                     const syncFrom = region.metaFrom ?? region.from;
@@ -347,7 +226,7 @@ const editableRegionSyncPlugin = ViewPlugin.fromClass(
                     );
                     workerBridge.itemNote
                         .updateNoteContent(
-                            libraryId,
+                            target.libraryId,
                             region.key,
                             noteContent,
                             "editor",
@@ -360,22 +239,57 @@ const editableRegionSyncPlugin = ViewPlugin.fromClass(
                     //   > <!-- ZF_ANNO_BEG_KEY -->
                     //   > comment text here
                     //   > <!-- ZF_ANNO_END_KEY -->
-                    // Strip the leading `> ` prefix from each line before
-                    // converting MD → restricted HTML for the annotation comment.
+                    // Strip the leading `> ` prefix from each line first.
                     const content = state.doc.sliceString(
                         region.from,
                         region.to,
                     );
                     const stripped = content.replace(/^>[ \t]?/gm, "");
-                    workerBridge.annotation
-                        .updateAnnotationComment(
-                            libraryId,
-                            region.key,
-                            stripped,
-                        )
-                        .catch(() => {
-                            // Background sync — errors logged by worker
-                        });
+
+                    if (target.kind === "zotero") {
+                        // MD → restricted HTML happens worker-side.
+                        workerBridge.annotation
+                            .updateAnnotationComment(
+                                target.libraryId,
+                                region.key,
+                                stripped,
+                            )
+                            .catch(() => {
+                                // Background sync — errors logged by worker
+                            });
+                    } else {
+                        // Local attachment: comments live in the .zf.json
+                        // sidecar as Zotero's restricted annotation HTML —
+                        // LocalDataManager converts MD → HTML, mirroring the
+                        // worker path. No note re-render (the note already
+                        // contains the new text).
+                        const file = services.app.vault.getAbstractFileByPath(
+                            target.attachmentPath,
+                        );
+                        if (!(file instanceof TFile)) return;
+
+                        new LocalDataManager(file)
+                            .updateAnnotationCommentFromNote(
+                                region.key,
+                                stripped,
+                            )
+                            .then((changed) => {
+                                if (changed) {
+                                    // Let an open local reader refresh its cache.
+                                    services.taskMonitor.localAnnotationChanged.emit(
+                                        target.attachmentPath,
+                                        region.key,
+                                    );
+                                }
+                            })
+                            .catch((e) => {
+                                services.logService.error(
+                                    "Failed to save local annotation comment from note",
+                                    "ZotFlowEditableRegion",
+                                    e,
+                                );
+                            });
+                    }
                 }
             }, DEBOUNCE_DELAY);
 

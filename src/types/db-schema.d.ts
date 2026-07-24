@@ -7,6 +7,12 @@ import {
 } from "./zotero";
 import { ZoteroItemData, ZoteroItemDataTypeMap } from "./zotero-item";
 
+/** Key-value cache entry for the CSL renderer (styles, locales, index). */
+export interface IDBCslCacheEntry {
+    key: string;
+    value: string;
+}
+
 /** Stored Zotero API key with associated group membership. */
 export interface IDBZoteroKey extends ZoteroKey {
     joinedGroups: number[]; // Array of Group IDs the key has access to
@@ -87,6 +93,10 @@ interface _IDBZoteroItem<T extends ZoteroItemData> {
 
     // Citation Key
     citationKey?: string;
+
+    // CSL-JSON payload from the Zotero API (include=data,csljson), consumed
+    // by the citation/bibliography template filters. Non-indexed.
+    csljson?: Record<string, unknown>;
 
     // lastAccessedAt
     lastAccessedAt?: string;
