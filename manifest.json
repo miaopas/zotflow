@@ -1,11 +1,11 @@
 {
 	"id": "zotflow",
-	"name": "ZotFlow",
+	"name": "ZotFlow (Modified)",
 	"version": "1.2.1",
 	"minAppVersion": "1.11.4",
-	"description": "Keep your research in flow!",
-	"author": "Xianpi Duan",
-	"authorUrl": "https://github.com/duanxianpi/",
+	"description": "Keep your research in flow! — Modified fork with custom annotation colors. Based on ZotFlow by Xianpi Duan.",
+	"author": "Xianpi Duan (modified by miaopas)",
+	"authorUrl": "https://github.com/miaopas/zotflow",
 	"fundingUrl": "https://buymeacoffee.com/duanxianpi",
 	"isDesktopOnly": false
 }
